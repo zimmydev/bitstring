@@ -2,7 +2,9 @@ module Bitstring exposing
     ( Bitstring
     , Bit(..)
     , empty
-    , append, fromBytes, fromList, get, isEmpty, pop, push, size, sizeInBytes, toBytes, toList
+    , initialize
+    , repeat
+    , and, append, complement, concat, foldl, foldr, fromBytes, fromList, get, indexedMap, isEmpty, map, or, padding, pop, push, size, sizeInBytes, slice, toBytes, toList, xor
     )
 
 {-| A `Bitstring` is a [data structure](https://en.wikipedia.org/wiki/Bit_array) for dealing with data at the bit level; it is also commonly referred to as a _bit array_. It can be very useful when you need to manipulate binary data, but your data is not byte-shaped (e.g., compressed or encoded data tends to be shaped this way).
@@ -16,9 +18,11 @@ If you need to deal with data on the level of bytes, [this library](https://pack
 @docs Bit
 
 
-# Creating
+# Creating a bitstring
 
 @docs empty
+@docs initialize
+@docs repeat
 
 -}
 
@@ -63,7 +67,7 @@ type alias PackedInt =
 
 
 
---- CREATING BITSTRINGS ---
+--- CREATING A BITSTRING ---
 
 
 {-| Return an empty bitstring.
@@ -76,8 +80,18 @@ empty =
     Bitstring 0 Array.empty
 
 
+initialize : Int -> (Int -> Bit) -> Bitstring
+initialize _ _ =
+    Debug.todo "initialize a bitstring with a closure"
 
---- ACCESSING PROPERTIES OF BITSTRINGS ---
+
+repeat : Int -> Bit -> Bitstring
+repeat _ _ =
+    Debug.todo "initialize a bitstring with a constant bit"
+
+
+
+--- ACCESSING PROPERTIES OF A BITSTRING ---
 
 
 {-| Return the size of a bitstring, in terms of bits.
@@ -88,16 +102,6 @@ empty =
 size : Bitstring -> Int
 size (Bitstring sz _) =
     sz
-
-
-{-| Determine if a bitstring is empty.
-
-    isEmpty empty == True
-
--}
-isEmpty : Bitstring -> Bool
-isEmpty bits =
-    size bits == 0
 
 
 {-| Return the size of some bitstring, in terms of the minimum number of bytes that would be needed to represent the bitstring (padding the remaining space with zeros when necessary). For example, the `empty` bitstring is 0 bytes in size, but a 1-bit bitstring is 1 byte in size (with 7 zeros for padding).
@@ -111,6 +115,16 @@ sizeInBytes (Bitstring sz _) =
         0
 
 
+{-| Determine if a bitstring is empty.
+
+    isEmpty empty == True
+
+-}
+isEmpty : Bitstring -> Bool
+isEmpty bits =
+    size bits == 0
+
+
 {-| Return the size that the padding will be if the bitstring is converted to `Bytes`. Another way to think about padding is as the amount of bits you can push onto the end of a bitstring until it aligns with the next byte boundary. Note that the empty bitstring is considered aligned (i.e., the padding is 0).
 -}
 padding : Bitstring -> Int
@@ -119,7 +133,7 @@ padding bitstring =
 
 
 
---- CONVERTING BITS ---
+--- CONVERTING A BITSTRING ---
 
 
 fromBytes : Bytes -> Bitstring
@@ -135,8 +149,8 @@ fromBytes bytes =
 
 
 toBytes : Bitstring -> Bytes
-toBytes bitstring =
-    Debug.todo "convert from bits to bytes, adding zeros-padding"
+toBytes _ =
+    Debug.todo "convert from bits to bytes, padding with 0 where necessary"
 
 
 fromList : List Bit -> Bitstring
@@ -177,7 +191,7 @@ set index bit (Bitstring sizeInBits array) =
 
 
 
---- TRANSFORMING BITSTRINGS ---
+--- TRANSFORMING A BITSTRING ---
 
 
 push : Bit -> Bitstring -> Bitstring
@@ -199,18 +213,67 @@ push bit (Bitstring index array) =
 
 
 pop : Bitstring -> ( Maybe Bit, Bitstring )
-pop bitstring =
+pop _ =
     Debug.todo "pop a bit (might as well have a mirror of push)"
 
 
 append : Bitstring -> Bitstring -> Bitstring
-append left right =
+append _ _ =
     Debug.todo "append two Bitstring using"
 
 
+concat : List Bitstring -> Bitstring
+concat _ =
+    Debug.todo "concat a list of bitstrings"
+
+
 slice : Int -> Int -> Bitstring -> Bitstring
-slice start end (Bitstring sizeInBits array) =
+slice _ _ _ =
     Debug.todo "bits to a slice of bits"
+
+
+map : (Bit -> Bit) -> Bitstring -> Bitstring
+map _ _ =
+    Debug.todo "map over a bitstring"
+
+
+indexedMap : (Int -> Bit -> Bit) -> Bitstring -> Bitstring
+indexedMap _ _ =
+    Debug.todo "map over a bitstring with a bit index"
+
+
+foldl : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
+foldl _ _ _ =
+    Debug.todo "fold left over a bitstring"
+
+
+foldr : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
+foldr _ _ _ =
+    Debug.todo "fold right over a bitstring"
+
+
+
+--- BITWISE OPERATIONS ---
+
+
+complement : Bitstring -> Bitstring
+complement _ =
+    Debug.todo "invert the bits"
+
+
+and : Bitstring -> Bitstring -> Bitstring
+and _ _ =
+    Debug.todo "bitwise and between 2 bitstrings"
+
+
+or : Bitstring -> Bitstring -> Bitstring
+or _ _ =
+    Debug.todo "bitwise or between 2 bitstrings"
+
+
+xor : Bitstring -> Bitstring -> Bitstring
+xor _ _ =
+    Debug.todo "bitwise xor between 2 bitstrings"
 
 
 
