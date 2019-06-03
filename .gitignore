@@ -6,3 +6,7 @@ repl-temp-*
 
 # Desktop Services Store on macOS
 .DS_Store
+
+# elm-verify-examples
+
+tests/VerifyExamples/

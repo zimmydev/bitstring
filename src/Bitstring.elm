@@ -1,10 +1,13 @@
 module Bitstring exposing
-    ( Bitstring
-    , Bit(..)
-    , empty
-    , repeat
-    , initialize
-    , SizingMethod(..), and, append, complement, concat, defaultSizing, dropLeft, dropRight, foldl, foldr, fromBytes, fromList, get, indexedMap, isEmpty, left, or, padding, pop, push, right, size, sizeInBytes, slice, toBytes, toList, xor
+    ( Bitstring, Bit(..)
+    , empty, repeat, initialize
+    , size, sizeInBytes, isEmpty, padding
+    , fromBytes, toBytes, fromList, toList
+    , get, set
+    , slice, left, right, dropLeft, dropRight
+    , push, pop, append, concat, indexedMap
+    , foldl, foldr
+    , SizingMethod(..), defaultSizing, complement, and, or, xor
     )
 
 {-| A `Bitstring` is a [data structure](https://en.wikipedia.org/wiki/Bit_array)
@@ -13,20 +16,53 @@ _bit array_. It can be very useful when you need to manipulate binary data, but
 your data is not byte-shaped (e.g., compressed or encoded data tends to be
 shaped this way).
 
-If you need to deal with data on the level of bytes, [this library](https://package.elm-lang.org/packages/elm/bytes/latest/) is probably more suited to your needs.
+If you need to deal with data on the level of bytes, the [`elm/bytes`](https://bit.ly/2wByQX8)
+library is probably more suited to your needs.
 
 
 # Bitstring
 
-@docs Bitstring
-@docs Bit
+@docs Bitstring, Bit
 
 
 # Creating a Bitstring
 
-@docs empty
-@docs repeat
-@docs initialize
+@docs empty, repeat, initialize
+
+
+# Dimensions
+
+@docs size, sizeInBytes, isEmpty, padding
+
+
+# Converting
+
+@docs fromBytes, toBytes, fromList, toList
+
+
+# Getting and setting bits
+
+@docs get, set
+
+
+# Substrings
+
+@docs slice, left, right, dropLeft, dropRight
+
+
+# Transforming
+
+@docs push, pop, append, concat, indexedMap
+
+
+# Reducing
+
+@docs foldl, foldr
+
+
+# Bitwise operations
+
+@docs SizingMethod, defaultSizing, complement, and, or, xor
 
 -}
 
@@ -47,7 +83,7 @@ type Bitstring
     = Bitstring Size (Array PackedInt)
 
 
-{-| A `Bit` (_bit_ being short for _binary digit_) is either `One` or `Zero`.
+{-| A `Bit` is either `One` or `Zero`.
 -}
 type Bit
     = One
@@ -77,15 +113,14 @@ type SizingMethod
     | TruncateRight
 
 
-{-| The default sizing behavior for bitwise operations, which is `PadRight Zero`.
+{-| The default sizing method for bitwise operations, which is `PadRight Zero`.
 
 This is basically what you would expect if you're building your bitstring up
 from left to right, in which case you would expect the MSBs (most-significant
-bits) to be aligned. I imagine this is desirable and the most straightforward
-in _most_ cases.
+bits) to be aligned. I imagine that this is sensible behavior in _most_ cases.
 
-This may not be what you would expect if your bitstring is a representation
-of a binary number, in which case you would expect the LSBs (least-significant
+This may not be the behavior you expect if your bitstring is a representation
+of a binary number, in which case you might expect the LSBs (least-significant
 bits) to be aligned.
 
 -}
@@ -119,7 +154,7 @@ type alias PackedInt =
 
 {-| Return an empty bitstring.
 
-    size empty == 0
+    size empty --> 0
 
 -}
 empty : Bitstring
@@ -132,7 +167,8 @@ returns a bitstring of size `n` with all bits set to `bit`. This results in a
 bitstring with all bits either set or unset, which can be very useful for
 creating bitmasks.
 
-    repeat 4 One == fromList [ One, One, One, One ]
+    repeat 4 One
+    --> fromList [ One, One, One, One ]
 
 -}
 repeat : Int -> Bit -> Bitstring
@@ -146,9 +182,10 @@ which takes an index and produces a bit (`Int -> Bit`).
 
     pattern : Int -> Bit
     pattern i =
-        if i |> modBy 2 == 0 then One else Zero
+        if (i |> modBy 2) == 0 then One else Zero
 
-    initialize 4 pattern == fromList [One, Zero, One, Zero]
+    initialize 4 pattern
+    --> fromList [One, Zero, One, Zero]
 
 -}
 initialize : Int -> (Int -> Bit) -> Bitstring
@@ -157,12 +194,13 @@ initialize _ _ =
 
 
 
---- ACCESSING PROPERTIES OF A BITSTRING ---
+--- DIMENSIONS OF A BITSTRING ---
 
 
 {-| Return the size of a bitstring, in terms of bits.
 
-    size (fromList [ One, Zero, One ]) == 3
+    size (fromList [ One, Zero, One ])
+    --> 3
 
 -}
 size : Bitstring -> Int
@@ -174,13 +212,13 @@ size (Bitstring sz _) =
 that would be needed to represent the it when converting from a `Bitstring` to
 `Bytes` using `toBytes` (padding the remaining space with zeros when necessary).
 
-    sizeInBytes empty == 0
+    sizeInBytes empty --> 0
 
-    sizeInBytes (repeat 2 Zero) == 1
+    sizeInBytes (repeat 2 Zero) --> 1
 
-    sizeInBytes (repeat 8 Zero) == 1
+    sizeInBytes (repeat 8 Zero) --> 1
 
-    sizeInBytes (repeat 9 Zero) == 2
+    sizeInBytes (repeat 9 Zero) --> 2
 
 -}
 sizeInBytes : Bitstring -> Int
@@ -194,7 +232,8 @@ sizeInBytes (Bitstring sz _) =
 
 {-| Determine if a bitstring is empty.
 
-    isEmpty empty == True
+    isEmpty empty
+    --> True
 
 -}
 isEmpty : Bitstring -> Bool
@@ -207,13 +246,13 @@ bytes using `toBytes`. Another way to think about padding is as the amount of
 bits that you can push onto the end of a bitstring until it aligns with the next
 byte boundary.
 
-    padding empty == 0
+    padding empty --> 0
 
-    padding (repeat 2 One) == 6
+    padding (repeat 2 One) --> 6
 
-    padding (repeat 8 One) == 0
+    padding (repeat 8 One) --> 0
 
-    padding (repeat 9 One) == 7
+    padding (repeat 9 One) --> 7
 
 Notice that the empty bitstring is considered aligned (i.e., the padding is 0).
 
@@ -265,7 +304,8 @@ toBytes _ =
 
 {-| Create a bitstring from a list of bits.
 
-    size (fromList [ Zero, One, One, Zero ]) == 4
+    fromList [ Zero, One, One, Zero ] |> size
+    --> 4
 
 -}
 fromList : List Bit -> Bitstring
@@ -280,7 +320,8 @@ fromList bitList =
 
 {-| Create a list of bits from a bitstring.
 
-    toList (repeat 3 Zero) == [ Zero, Zero, Zero ]
+    toList (repeat 3 Zero)
+    --> [ Zero, Zero, Zero ]
 
 -}
 toList : Bitstring -> List Bit
@@ -296,7 +337,8 @@ toList bitstring =
 {-| Return `Just` the bit at the given index in the bitstring, or `Nothing` if
 the index is out of range.
 
-    get 1 (fromList [ One, Zero, One, One ]) == Zero
+    fromList [ One, Zero, One, One ] |> get 1
+    --> Zero
 
 -}
 get : Int -> Bitstring -> Maybe Bit
@@ -312,7 +354,8 @@ get index (Bitstring sizeInBits array) =
 {-| Set or unset the individual bit at the given index in the bitstring. If the
 index is out of range, the bitstring is unaltered.
 
-    set 2 (repeat 5 One) == fromList [ One, One, Zero, One, One ]
+    repeat 5 One |> set 2 Zero
+    --> fromList [ One, One, Zero, One, One ]
 
 -}
 set : Int -> Bit -> Bitstring -> Bitstring
@@ -323,16 +366,18 @@ set index bit (Bitstring sizeInBits array) =
 
 
 
---- GETTING SUB-BITSTRINGS ---
+--- TAKING SUBSTRINGS ---
 
 
 {-| Take a substring of the bitstring using the given `start` and `end` indices.
 Negative indices are calculated by subtracting backwards from the end of the
 bitstring.
 
-    slice 2 4 (fromList [ One, One, Zero, Zero ]) == fromList [ Zero, Zero ]
+    fromList [ One, One, Zero, Zero, One ] |> slice 2 4
+    --> fromList [ Zero, Zero ]
 
-    slice 1 -1 (fromList [ One, One, Zero, Zero ]) == fromList [ One, Zero ]
+    fromList [ One, One, Zero, Zero, One ] |> slice 1 -1
+    --> fromList [ One, Zero, Zero ]
 
 -}
 slice : Int -> Int -> Bitstring -> Bitstring
@@ -375,7 +420,8 @@ dropRight _ _ =
 {-| Push a bit onto the end of a bitstring. This is probably the interface
 you'll want to use if you're constructing bitstrings at runtime.
 
-    (empty |> push One |> push Zero) == fromList [ One, Zero ]
+    empty |> push One |> push Zero |> push Zero
+    --> fromList [ One, Zero, Zero ]
 
 -}
 push : Bit -> Bitstring -> Bitstring
@@ -399,9 +445,11 @@ push bit (Bitstring index array) =
 {-| Pop a bit from the end of a bitstring. Return a tuple containing `Just` the
 popped bit (or `Nothing` if the bitstring was empty) and the modified bitstring.
 
-    pop (fromList [ One, One, Zero ]) == ( Just Zero, fromList [ One, One ] )
+    pop (fromList [ One, One, Zero ])
+    --> ( Just Zero, fromList [ One, One ] )
 
-    pop empty == ( Nothing, empty )
+    pop empty
+    --> ( Nothing, empty )
 
 -}
 pop : Bitstring -> ( Maybe Bit, Bitstring )
@@ -420,7 +468,9 @@ Note that the first argument to the function is the bitstring to be appended
 onto the _end_. This may seem backwards, but it is to facilitate appending in a
 pipeline.
 
-    (fromList [ Zero, One ] |> append (fromList [ One, One ])) == fromList [ Zero, One, One, One ]
+    fromList [ Zero, One ]
+        |> append (fromList [ One, Zero, Zero ])
+    --> fromList [ Zero, One, One, Zero, Zero ]
 
 -}
 append : Bitstring -> Bitstring -> Bitstring
@@ -430,7 +480,12 @@ append _ _ =
 
 {-| Concatenate a list of bitstrings into one.
 
-    concat [ fromList [ One ], fromList [ Zero, Zero ], fromList [ One ] ] == fromList [ One, Zero, Zero, One ]
+    concat
+        [ fromList [ One ]
+        , fromList [ Zero, Zero ]
+        , fromList [ One, Zero, Zero ]
+        ]
+    --> fromList [ One, Zero, Zero, One, Zero, Zero ]
 
 -}
 concat : List Bitstring -> Bitstring
@@ -445,6 +500,10 @@ indices in a bitstring, without having to use `set` for each bit.
 indexedMap : (Int -> Bit -> Bit) -> Bitstring -> Bitstring
 indexedMap _ _ =
     Debug.todo "map over a bitstring with a bit index"
+
+
+
+--- REDUCING A BITSTRING ---
 
 
 {-| Reduce a bitstring from the left. `foldl` is conventional nomenclature
