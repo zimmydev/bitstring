@@ -4,8 +4,8 @@ module Bitstring exposing
     , size, sizeInBytes, isEmpty, padding
     , fromBytes, toBytes, fromList, toList
     , get, set
-    , slice, left, right, dropLeft, dropRight
     , push, pop, append, concat, indexedMap
+    , slice, left, right, dropLeft, dropRight
     , foldl, foldr
     , SizingMethod(..), defaultSizing, complement, and, or, xor
     )
@@ -45,14 +45,14 @@ library is probably more suited to your needs.
 @docs get, set
 
 
-# Substrings
-
-@docs slice, left, right, dropLeft, dropRight
-
-
 # Transforming
 
 @docs push, pop, append, concat, indexedMap
+
+
+# Substrings
+
+@docs slice, left, right, dropLeft, dropRight
 
 
 # Reducing
@@ -154,7 +154,8 @@ type alias PackedInt =
 
 {-| Return an empty bitstring.
 
-    size empty --> 0
+    size empty
+    --> 0
 
 -}
 empty : Bitstring
@@ -246,13 +247,14 @@ bytes using `toBytes`. Another way to think about padding is as the amount of
 bits that you can push onto the end of a bitstring until it aligns with the next
 byte boundary.
 
-    padding empty --> 0
-
-    padding (repeat 2 One) --> 6
-
-    padding (repeat 8 One) --> 0
-
-    padding (repeat 9 One) --> 7
+    padding empty
+    --> 0
+    padding (repeat 2 One)
+    --> 6
+    padding (repeat 8 One)
+    --> 0
+    padding (repeat 9 One)
+    --> 7
 
 Notice that the empty bitstring is considered aligned (i.e., the padding is 0).
 
@@ -366,54 +368,6 @@ set index bit (Bitstring sizeInBits array) =
 
 
 
---- TAKING SUBSTRINGS ---
-
-
-{-| Take a substring of the bitstring using the given `start` and `end` indices.
-Negative indices are calculated by subtracting backwards from the end of the
-bitstring.
-
-    fromList [ One, One, Zero, Zero, One ] |> slice 2 4
-    --> fromList [ Zero, Zero ]
-
-    fromList [ One, One, Zero, Zero, One ] |> slice 1 -1
-    --> fromList [ One, Zero, Zero ]
-
--}
-slice : Int -> Int -> Bitstring -> Bitstring
-slice _ _ _ =
-    Debug.todo "bits to a slice of bits"
-
-
-{-| Take the leftmost `n` bits of a bitstring.
--}
-left : Int -> Bitstring -> Bitstring
-left _ _ =
-    Debug.todo "grab the left n bits (can be written in terms of dropRight)"
-
-
-{-| Take the rightmost `n` bits of a bitstring.
--}
-right : Int -> Bitstring -> Bitstring
-right _ _ =
-    Debug.todo "grab the right n bits (can be written in terms of dropLeft)"
-
-
-{-| Drop `n` bits from the left side of a bitstring.
--}
-dropLeft : Int -> Bitstring -> Bitstring
-dropLeft _ _ =
-    Debug.todo "drop the left n bits"
-
-
-{-| Drop `n` bits from the right side of a bitstring.
--}
-dropRight : Int -> Bitstring -> Bitstring
-dropRight _ _ =
-    Debug.todo "drop the right n bits"
-
-
-
 --- TRANSFORMING A BITSTRING ---
 
 
@@ -425,21 +379,21 @@ you'll want to use if you're constructing bitstrings at runtime.
 
 -}
 push : Bit -> Bitstring -> Bitstring
-push bit (Bitstring index array) =
+push bit (Bitstring sizeInBits array) =
     let
-        nextIndex =
-            index + 1
+        writeIndex =
+            sizeInBits
     in
-    if index == 0 || (index - 1) // 16 < (nextIndex - 1) // 16 then
+    if sizeInBits |> isAlignedBy 16 then
         -- We're crossing a 16-bit "boundary", so we need to make room.
         array
             |> Array.push (msbMask bit)
-            |> Bitstring nextIndex
+            |> Bitstring (sizeInBits + 1)
 
     else
         array
-            |> setBitInArrayAt index bit
-            |> Bitstring nextIndex
+            |> setBitInArrayAt writeIndex bit
+            |> Bitstring (sizeInBits + 1)
 
 
 {-| Pop a bit from the end of a bitstring. Return a tuple containing `Just` the
@@ -472,10 +426,32 @@ pipeline.
         |> append (fromList [ One, Zero, Zero ])
     --> fromList [ Zero, One, One, Zero, Zero ]
 
+Note that due to the nature of the internal implementation of bitstrings in
+in general, `append` is a very quick operation when the bitstring to be
+_appended to_ is a size in bits that is a multiple of 16. This is a mostly
+ignorable implementation detail, unless specific performance issues arise.
+
 -}
 append : Bitstring -> Bitstring -> Bitstring
-append _ _ =
-    Debug.todo "append two Bitstring"
+append bitstring2 bitstring1 =
+    let
+        shiftAmount =
+            size bitstring1 |> paddingBy 16
+
+        ( array1, array2 ) =
+            ( unwrap bitstring1, unwrap bitstring2 )
+    in
+    if isEmpty bitstring1 then
+        bitstring2
+
+    else if size bitstring1 |> isAlignedBy 16 then
+        -- We can simply append the arrays
+        array1
+            |> Array.append array2
+            |> Bitstring (size bitstring1 + size bitstring2)
+
+    else
+        Debug.todo "do some shifting"
 
 
 {-| Concatenate a list of bitstrings into one.
@@ -489,8 +465,8 @@ append _ _ =
 
 -}
 concat : List Bitstring -> Bitstring
-concat _ =
-    Debug.todo "concat a list of bitstrings"
+concat =
+    List.foldl (\bs acc -> acc |> append bs) empty
 
 
 {-| Map over a bitstring, supplying an index argument to the mapping function.
@@ -500,6 +476,78 @@ indices in a bitstring, without having to use `set` for each bit.
 indexedMap : (Int -> Bit -> Bit) -> Bitstring -> Bitstring
 indexedMap _ _ =
     Debug.todo "map over a bitstring with a bit index"
+
+
+
+--- TAKING SUBSTRINGS ---
+
+
+{-| Take a substring of the bitstring using the given `start` and `end` indices.
+Negative indices are calculated by subtracting backwards from the end of the
+bitstring.
+
+    fromList [ One, One, Zero, Zero, One ] |> slice 2 4
+    --> fromList [ Zero, Zero ]
+
+    -- The is how pop is defined
+    fromList [ One, One, Zero, Zero, One ] |> slice 0 -1
+    --> fromList [ One, One, Zero, Zero ]
+
+-}
+slice : Int -> Int -> Bitstring -> Bitstring
+slice start end (Bitstring sizeInBits array) =
+    let
+        absoluteStart =
+            start |> translateIndex sizeInBits
+
+        asboluteEnd =
+            end |> translateIndex sizeInBits
+    in
+    Debug.todo "bits to a slice of bits"
+
+
+{-| Take the leftmost `n` bits of a bitstring.
+
+    fromList [ One, One, Zero, Zero, One ] |> left 3
+    --> fromList [ One, One, Zero ]
+
+-}
+left : Int -> Bitstring -> Bitstring
+left _ _ =
+    Debug.todo "grab the left n bits (can be written in terms of dropRight)"
+
+
+{-| Take the rightmost `n` bits of a bitstring.
+
+    fromList [ One, One, Zero, Zero, One ] |> right 3
+    --> fromList [ Zero, Zero, One ]
+
+-}
+right : Int -> Bitstring -> Bitstring
+right _ _ =
+    Debug.todo "grab the right n bits (can be written in terms of dropLeft)"
+
+
+{-| Drop `n` bits from the left side of a bitstring.
+
+    fromList [ One, One, Zero, Zero, One ] |> dropLeft 3
+    --> fromList [ Zero, One ]
+
+-}
+dropLeft : Int -> Bitstring -> Bitstring
+dropLeft _ _ =
+    Debug.todo "drop the left n bits"
+
+
+{-| Drop `n` bits from the right side of a bitstring.
+
+    fromList [ One, One, Zero, Zero, One ] |> dropRight 3
+    --> fromList [ One, One ]
+
+-}
+dropRight : Int -> Bitstring -> Bitstring
+dropRight _ _ =
+    Debug.todo "drop the right n bits"
 
 
 
@@ -563,98 +611,35 @@ xor _ _ =
 --- HELPER FUNCTIONS ---
 
 
-paddingBy : Int -> Int -> Int
-paddingBy width sz =
-    (width - 1) - (sz - 1 |> modBy width)
-
-
-{-| A 16-bit mask with only the left-most (most-significant) bit set or unset,
-depending on its argument. Used for creating all kinds of masks (e.g. and, or,
-xor).
+{-| Unwraps the `Array PackedInt` from `Bitstring`.
 -}
-msbMask : Bit -> PackedInt
-msbMask bit =
-    case bit of
-        One ->
-            -- 0b1000… (16 bits)
-            0x8000
-
-        Zero ->
-            -- 0b0000… (16 bits)
-            0x00
-
-
-getBitAt : Int -> PackedInt -> Bit
-getBitAt globalOffset int =
-    let
-        bitOffset =
-            globalOffset |> modBy 16
-
-        bitmask =
-            msbMask One |> Bitwise.shiftRightZfBy bitOffset
-    in
-    case Bitwise.and int bitmask of
-        0x00 ->
-            Zero
-
-        _ ->
-            One
-
-
-getIntInArrayAt : Int -> Array PackedInt -> Maybe PackedInt
-getIntInArrayAt globalOffset array =
-    let
-        intOffset =
-            globalOffset // 16
-    in
+unwrap : Bitstring -> Array PackedInt
+unwrap (Bitstring _ array) =
     array
-        |> Array.get intOffset
 
 
-getBitInArrayAt : Int -> Array PackedInt -> Maybe Bit
-getBitInArrayAt globalOffset array =
-    array
-        |> getIntInArrayAt globalOffset
-        |> Maybe.map (getBitAt globalOffset)
+{-| Calculates the size of the minimum padding that would need to be introduced
+for a sequence given its size and the desired division size.
+-}
+paddingBy : Int -> Int -> Int
+paddingBy divisionSize sizeInBits =
+    (divisionSize - 1) - (sizeInBits - 1 |> modBy divisionSize)
 
 
-setBitAt : Int -> Bit -> PackedInt -> PackedInt
-setBitAt globalOffset bit int =
-    let
-        bitOffset =
-            globalOffset |> modBy 16
-
-        bitmask =
-            msbMask bit |> Bitwise.shiftRightZfBy bitOffset
-    in
-    Bitwise.or int bitmask
+isAlignedBy : Int -> Int -> Bool
+isAlignedBy divisionSize =
+    paddingBy divisionSize >> (==) 0
 
 
-setIntInArrayAt : Int -> PackedInt -> Array PackedInt -> Array PackedInt
-setIntInArrayAt globalOffset int array =
-    let
-        intOffset =
-            globalOffset // 16
-    in
-    array
-        |> Array.set intOffset int
-
-
-setBitInArrayAt : Int -> Bit -> Array PackedInt -> Array PackedInt
-setBitInArrayAt globalOffset bit array =
-    case array |> getIntInArrayAt globalOffset of
-        Nothing ->
-            array
-
-        Just int ->
-            array
-                |> setIntInArrayAt globalOffset (int |> setBitAt globalOffset bit)
-
-
+{-| Decode bytes into bitstring's internal representation; i.e., an array of
+16-bit `PackedInt`s encoding two bytes each of the input bytes. If the size of
+the input is not an even integer, the last `PackedInt` will contain 8 bits worth
+of zero-padding on its right-hand (least-significant) side.
+-}
 packedInt16ArrayDecoder : Int -> Decoder (Array PackedInt)
 packedInt16ArrayDecoder sz =
     BDecode.loop
-        ( 0, Array.initialize ((sz + 1) // 2) (always 0) )
+        ( 0, Array.repeat ((sz + 1) // 2) 0 )
         (\( n, acc ) ->
             if n >= sz then
                 BDecode.succeed (Done acc)
@@ -680,3 +665,131 @@ packedInt16ArrayDecoder sz =
                             Loop ( n + 1, acc |> Array.set arrayIndex nextInt16 )
                         )
         )
+
+
+{-| Generate a 16-bit mask with only the left-most (most-significant) bit set or
+unset, depending on its `bit` argument. Used for creating a simple mask.
+-}
+msbMask : Bit -> PackedInt
+msbMask bit =
+    case bit of
+        One ->
+            -- 0b1000… (16 bits)
+            0x8000
+
+        Zero ->
+            -- 0b0000… (16 bits)
+            0x00
+
+
+{-| Get the bit within a `PackedInt` at the given global bit-index.
+-}
+getBitAt : Int -> PackedInt -> Bit
+getBitAt globalIndex packedInt =
+    let
+        bitIndex =
+            globalIndex |> modBy 16
+
+        bitmask =
+            msbMask One |> Bitwise.shiftRightZfBy bitIndex
+    in
+    case Bitwise.and packedInt bitmask of
+        0x00 ->
+            Zero
+
+        _ ->
+            One
+
+
+{-| Get `Just` the `PackedInt` in a `PackedInt` array that contains the bit at
+the given global bit-index, or `Nothing` if the index is out of range.
+-}
+getIntInArrayAt : Int -> Array PackedInt -> Maybe PackedInt
+getIntInArrayAt globalIndex array =
+    let
+        packedIntIndex =
+            globalIndex // 16
+    in
+    array
+        |> Array.get packedIntIndex
+
+
+{-| A convenience function combining `getIntInArrayAt` and `getBitAt`.
+-}
+getBitInArrayAt : Int -> Array PackedInt -> Maybe Bit
+getBitInArrayAt globalIndex array =
+    array
+        |> getIntInArrayAt globalIndex
+        |> Maybe.map (getBitAt globalIndex)
+
+
+{-| Set the bit within a `PackedInt` at the given global bit-index to the given
+bit.
+
+If the index is out of range, the integer is unaltered.
+
+-}
+setBitAt : Int -> Bit -> PackedInt -> PackedInt
+setBitAt globalIndex bit packedInt =
+    let
+        bitIndex =
+            globalIndex |> modBy 16
+
+        bitmask =
+            msbMask bit |> Bitwise.shiftRightZfBy bitIndex
+    in
+    Bitwise.or packedInt bitmask
+
+
+{-| Set the `PackedInt` in the array which holds the bit at the given bit-index
+to another `PackedInt`.
+
+If the index is out of range, the array is unaltered.
+
+-}
+setIntInArrayAt : Int -> PackedInt -> Array PackedInt -> Array PackedInt
+setIntInArrayAt globalIndex packedInt array =
+    let
+        packedIntIndex =
+            globalIndex // 16
+    in
+    array
+        |> Array.set packedIntIndex packedInt
+
+
+{-| A convenience function combining `getIntInArrayAt`, `setBitAt`, and
+`setIntInArrayAt`.
+
+If the index is out of range, the array is unaltered.
+
+-}
+setBitInArrayAt : Int -> Bit -> Array PackedInt -> Array PackedInt
+setBitInArrayAt globalIndex bit array =
+    case array |> getIntInArrayAt globalIndex of
+        Nothing ->
+            array
+
+        Just packedInt ->
+            array
+                |> setIntInArrayAt globalIndex (packedInt |> setBitAt globalIndex bit)
+
+
+closeGap : Int -> Int -> Array PackedInt -> Array PackedInt
+closeGap gapSize sizeInBits array =
+    Debug.todo "close a gap on the left-hand side of the packed-int array"
+
+
+{-| Given a bitstring's size, convert a relative index for that bitstring into
+an absolute one.
+-}
+translateIndex : Int -> Int -> Int
+translateIndex sizeInBits index =
+    let
+        adjustedIndex =
+            if index < 0 then
+                sizeInBits + index
+
+            else
+                index
+    in
+    adjustedIndex |> clamp 0 sizeInBits
