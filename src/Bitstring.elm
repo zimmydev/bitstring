@@ -433,25 +433,54 @@ ignorable implementation detail, unless specific performance issues arise.
 
 -}
 append : Bitstring -> Bitstring -> Bitstring
-append bitstring2 bitstring1 =
+append (Bitstring size2 array2) (Bitstring size1 array1) =
     let
         shiftAmount =
-            size bitstring1 |> paddingBy 16
-
-        ( array1, array2 ) =
-            ( unwrap bitstring1, unwrap bitstring2 )
+            size1 |> paddingBy 16
     in
-    if isEmpty bitstring1 then
-        bitstring2
+    if size1 == 0 then
+        Bitstring size2 array2
 
-    else if size bitstring1 |> isAlignedBy 16 then
+    else if size2 == 0 then
+        Bitstring size1 array1
+
+    else if shiftAmount == 0 then
         -- We can simply append the arrays
-        array1
-            |> Array.append array2
-            |> Bitstring (size bitstring1 + size bitstring2)
+        Array.append array1 array2
+            |> Bitstring (size1 + size2)
 
     else
-        Debug.todo "do some shifting"
+        -- We'll have to do some shifting
+        let
+            ( lastIndex, firstIndex ) =
+                ( Array.length array1 - 1, 0 )
+
+            lastPackedInt =
+                array1
+                    |> Array.get lastIndex
+                    |> Maybe.withDefault 0x00
+
+            firstPackedInt =
+                array2
+                    |> Array.get firstIndex
+                    |> Maybe.withDefault 0x00
+
+            newLastPackedInt =
+                firstPackedInt
+                    |> Bitwise.shiftLeftBy shiftAmount
+                    |> Bitwise.or firstPackedInt
+
+            shiftedArray1 =
+                array1
+                    |> Array.set lastIndex newLastPackedInt
+
+            shiftedArray2 =
+                array2
+                    |> shiftArrayLeft shiftAmount
+                    |> resizeArray size2
+        in
+        Array.append shiftedArray1 shiftedArray2
+            |> Bitstring (size1 + size2)
 
 
 {-| Concatenate a list of bitstrings into one.
@@ -524,8 +553,9 @@ left _ _ =
 
 -}
 right : Int -> Bitstring -> Bitstring
-right _ _ =
-    Debug.todo "grab the right n bits (can be written in terms of dropLeft)"
+right n bitstring =
+    bitstring
+        |> dropLeft (size bitstring - n)
 
 
 {-| Drop `n` bits from the left side of a bitstring.
@@ -535,8 +565,15 @@ right _ _ =
 
 -}
 dropLeft : Int -> Bitstring -> Bitstring
-dropLeft _ _ =
-    Debug.todo "drop the left n bits"
+dropLeft n (Bitstring sizeInBits array) =
+    if n <= 0 then
+        Bitstring sizeInBits array
+
+    else
+        array
+            |> shiftArrayLeft n
+            |> resizeArray sizeInBits
+            |> Bitstring (sizeInBits - n |> max 0)
 
 
 {-| Drop `n` bits from the right side of a bitstring.
@@ -774,9 +811,20 @@ setBitInArrayAt globalIndex bit array =
                 |> setIntInArrayAt globalIndex (packedInt |> setBitAt globalIndex bit)
 
 
-closeGap : Int -> Int -> Array PackedInt -> Array PackedInt
-closeGap gapSize sizeInBits array =
-    Debug.todo "close a gap on the left-hand side of the packed-int array"
+{-| Shifts all the bits in the array an arbitrary amount to the left. Does not
+"clean up" after itself, so should be used in conjunction with `trimArray`.
+-}
+shiftArrayLeft : Int -> Array PackedInt -> Array PackedInt
+shiftArrayLeft gapSize array =
+    Debug.todo "shift all the bits in an array to the left"
+
+
+{-| Resizes an array to fit its bits properly, dropping `PackedInt`s off the end
+if needed.
+-}
+resizeArray : Int -> Array PackedInt -> Array PackedInt
+resizeArray sizeInBits array =
+    Debug.todo "resize an array"
 
 
 {-| Given a bitstring's size, convert a relative index for that bitstring into
