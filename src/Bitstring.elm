@@ -67,7 +67,6 @@ library is probably more suited to your needs.
 -}
 
 import Array exposing (Array)
-import Bitstring.Constants as Const
 import Bitwise
 import Bytes exposing (Bytes)
 import Bytes.Decode as BDecode exposing (Decoder, Step(..))
@@ -195,7 +194,7 @@ initialize : Int -> (Int -> Bit) -> Bitstring
 initialize n f =
     let
         arraySize =
-            n |> sizeBy Const.packedSize
+            n |> sizeBy 16
     in
     List.range 0 (n - 1)
         |> List.foldl
@@ -215,8 +214,8 @@ initialize n f =
 
 -}
 size : Bitstring -> Int
-size (Bitstring sz _) =
-    sz
+size (Bitstring sizeInBits _) =
+    sizeInBits
 
 
 {-| Return the size of some bitstring, in terms of the minimum number of bytes
@@ -323,7 +322,7 @@ fromList list =
             List.length list
 
         arraySize =
-            sizeInBits |> sizeBy Const.packedSize
+            sizeInBits |> sizeBy 16
     in
     list
         |> List.foldl
@@ -460,7 +459,7 @@ push bit (Bitstring sizeInBits array) =
         writeIndex =
             sizeInBits
     in
-    if sizeInBits |> isAlignedBy Const.packedSize then
+    if sizeInBits |> isAlignedBy 16 then
         -- We're crossing a `PackedInt` "boundary", so we need to make room.
         array
             |> Array.push (msbMask bit)
@@ -507,7 +506,7 @@ append : Bitstring -> Bitstring -> Bitstring
 append (Bitstring size2 array2) (Bitstring size1 array1) =
     let
         shiftAmount =
-            size1 |> paddingBy Const.packedSize
+            size1 |> paddingBy 16
     in
     if size1 == 0 then
         -- Short-circuit if bitstring1 is empty
@@ -529,7 +528,7 @@ append (Bitstring size2 array2) (Bitstring size1 array1) =
         let
             lastPackedInt =
                 getFirstWithDefault array2
-                    |> Bitwise.shiftRightZfBy (Const.packedSize - shiftAmount)
+                    |> Bitwise.shiftRightZfBy (16 - shiftAmount)
                     |> Bitwise.or (getLastWithDefault array1)
 
             shiftedArray1 =
@@ -757,7 +756,7 @@ zero-padding on its right-hand (least-significant) side.
 packedIntArrayDecoder : Int -> Decoder (Array PackedInt)
 packedIntArrayDecoder sz =
     BDecode.loop
-        ( 0, Array.repeat ((sz + 1) // Const.packedSizeInBytes) 0x00 )
+        ( 0, Array.repeat ((sz + 1) // 2) 0x00 )
         (\( n, acc ) ->
             if n >= sz then
                 BDecode.succeed (Done acc)
@@ -768,7 +767,7 @@ packedIntArrayDecoder sz =
                         (\x ->
                             let
                                 arrayIndex =
-                                    n // Const.packedSizeInBytes
+                                    n // 2
 
                                 nextInt16 =
                                     if (n |> modBy 2) == 0 then
@@ -793,7 +792,7 @@ msbMask bit =
     case bit of
         One ->
             -- 0b1000…
-            0x01 |> Bitwise.shiftLeftBy (Const.packedSize - 1)
+            0x01 |> Bitwise.shiftLeftBy (16 - 1)
 
         Zero ->
             -- 0b0000…
@@ -809,7 +808,7 @@ getBitAt : Int -> PackedInt -> Bit
 getBitAt globalIndex packedInt =
     let
         bitIndex =
-            globalIndex |> modBy Const.packedSize
+            globalIndex |> modBy 16
 
         bitmask =
             msbMask One |> Bitwise.shiftRightZfBy bitIndex
@@ -832,7 +831,7 @@ getIntInArrayAt : Int -> Array PackedInt -> Maybe PackedInt
 getIntInArrayAt globalIndex array =
     let
         packedIntIndex =
-            globalIndex // Const.packedSize
+            globalIndex // 16
     in
     array
         |> Array.get packedIntIndex
@@ -857,7 +856,7 @@ setBitAt : Int -> Bit -> PackedInt -> PackedInt
 setBitAt globalIndex bit packedInt =
     let
         bitIndex =
-            globalIndex |> modBy Const.packedSize
+            globalIndex |> modBy 16
 
         bitmask =
             msbMask bit |> Bitwise.shiftRightZfBy bitIndex
@@ -875,7 +874,7 @@ setIntInArrayAt : Int -> PackedInt -> Array PackedInt -> Array PackedInt
 setIntInArrayAt globalIndex packedInt array =
     let
         packedIntIndex =
-            globalIndex // Const.packedSize
+            globalIndex // 16
     in
     array
         |> Array.set packedIntIndex packedInt
@@ -902,10 +901,10 @@ shiftArrayLeft : Int -> Int -> Array PackedInt -> Array PackedInt
 shiftArrayLeft sizeInBits shiftAmount array =
     let
         newArraySize =
-            (sizeInBits - shiftAmount) |> sizeBy Const.packedSize
+            (sizeInBits - shiftAmount) |> sizeBy 16
 
         actualShiftAmount =
-            shiftAmount |> modBy Const.packedSize
+            shiftAmount |> modBy 16
     in
     array
         |> shiftArrayLeftHelper actualShiftAmount 0 (Array.repeat newArraySize 0x00)
@@ -929,7 +928,7 @@ shiftArrayLeftHelper shiftAmount index acc array =
             let
                 ( shiftedInt1, shiftedInt2 ) =
                     ( packedInt1 |> Bitwise.shiftLeftBy shiftAmount
-                    , packedInt2 |> Bitwise.shiftRightZfBy (Const.packedSize - shiftAmount)
+                    , packedInt2 |> Bitwise.shiftRightZfBy (16 - shiftAmount)
                     )
 
                 repackedArray =
