@@ -223,12 +223,8 @@ that would be needed to represent the it when converting from a `Bitstring` to
 
 -}
 sizeInBytes : Bitstring -> Int
-sizeInBytes (Bitstring sz _) =
-    if sz > 0 then
-        (sz - 1) // 8 + 1
-
-    else
-        0
+sizeInBytes bitstring =
+    size bitstring |> sizeBy 8
 
 
 {-| Determine if a bitstring is empty.
@@ -238,8 +234,8 @@ sizeInBytes (Bitstring sz _) =
 
 -}
 isEmpty : Bitstring -> Bool
-isEmpty bits =
-    size bits == 0
+isEmpty bitstring =
+    size bitstring == 0
 
 
 {-| Return the size that the padding will be if the bitstring is converted to
@@ -696,11 +692,13 @@ xor _ _ =
 --- HELPER FUNCTIONS ---
 
 
-{-| Unwraps the `Array PackedInt` from `Bitstring`.
--}
-unwrap : Bitstring -> Array PackedInt
-unwrap (Bitstring _ array) =
-    array
+sizeBy : Int -> Int -> Int
+sizeBy divisionSize sizeInBits =
+    if sizeInBits > 0 then
+        (sizeInBits - 1) // divisionSize + 1
+
+    else
+        0
 
 
 {-| Calculates the size of the minimum padding that would need to be introduced
