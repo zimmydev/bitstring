@@ -521,9 +521,7 @@ append (Bitstring size2 array2) (Bitstring size1 array1) =
                 array1 |> setLast lastPackedInt
 
             shiftedArray2 =
-                array2
-                    |> shiftArrayLeft shiftAmount
-                    |> resizeArray size2
+                array2 |> shiftArrayLeft size2 shiftAmount
         in
         Array.append shiftedArray1 shiftedArray2
             |> Bitstring (size1 + size2)
@@ -618,8 +616,7 @@ dropLeft n (Bitstring sizeInBits array) =
 
     else
         array
-            |> shiftArrayLeft n
-            |> resizeArray sizeInBits
+            |> shiftArrayLeft sizeInBits n
             |> Bitstring (sizeInBits - n |> max 0)
 
 
@@ -642,16 +639,32 @@ dropRight _ _ =
 meaning _fold from the left_.
 -}
 foldl : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
-foldl _ _ _ =
-    Debug.todo "fold left over a bitstring"
+foldl f acc bitstring =
+    bitstring
+        |> fold 0 (\i -> i < size bitstring) ((+) 1) f acc
 
 
 {-| Reduce a bitstring from the right. `foldr` is conventional nomenclature
 meaning _fold from the right_.
 -}
 foldr : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
-foldr _ _ _ =
-    Debug.todo "fold right over a bitstring"
+foldr f acc bitstring =
+    bitstring
+        |> fold (size bitstring - 1) (\i -> i >= 0) (\i -> i - 1) f acc
+
+
+fold : Int -> (Int -> Bool) -> (Int -> Int) -> (Bit -> acc -> acc) -> acc -> Bitstring -> acc
+fold index while step f acc bitstring =
+    if while index then
+        case bitstring |> get index of
+            Nothing ->
+                acc
+
+            Just bit ->
+                fold (step index) while step f (f bit acc) bitstring
+
+    else
+        acc
 
 
 
@@ -695,6 +708,10 @@ xor _ _ =
 --- HELPER FUNCTIONS ---
 
 
+{-| Calculates the minimum number of divisions that would be needed to represent
+a bitstring of some size given some division size. `sizeBy 8`, for example,
+calculates the minimum number of bytes needed.
+-}
 sizeBy : Int -> Int -> Int
 sizeBy divisionSize sizeInBits =
     if sizeInBits > 0 then
@@ -769,6 +786,9 @@ msbMask bit =
 
 
 {-| Get the bit within a `PackedInt` at the given global bit-index.
+
+You probably want `getBitInArrayAt`.
+
 -}
 getBitAt : Int -> PackedInt -> Bit
 getBitAt globalIndex packedInt =
@@ -789,6 +809,9 @@ getBitAt globalIndex packedInt =
 
 {-| Get `Just` the `PackedInt` in a `PackedInt` array that contains the bit at
 the given global bit-index, or `Nothing` if the index is out of range.
+
+You probably want `getBitInArrayAt`.
+
 -}
 getIntInArrayAt : Int -> Array PackedInt -> Maybe PackedInt
 getIntInArrayAt globalIndex array =
@@ -810,9 +833,9 @@ getBitInArrayAt globalIndex array =
 
 
 {-| Set the bit within a `PackedInt` at the given global bit-index to the given
-bit.
+bit. If the index is out of range, the integer is unaltered.
 
-If the index is out of range, the integer is unaltered.
+You probably want to use `setBitInArrayAt`
 
 -}
 setBitAt : Int -> Bit -> PackedInt -> PackedInt
@@ -828,9 +851,9 @@ setBitAt globalIndex bit packedInt =
 
 
 {-| Set the `PackedInt` in the array which holds the bit at the given bit-index
-to another `PackedInt`.
+to another `PackedInt`. If the index is out of range, the array is unaltered.
 
-If the index is out of range, the array is unaltered.
+You probably want to use `setBitInArrayAt`
 
 -}
 setIntInArrayAt : Int -> PackedInt -> Array PackedInt -> Array PackedInt
@@ -844,10 +867,7 @@ setIntInArrayAt globalIndex packedInt array =
 
 
 {-| A convenience function combining `getIntInArrayAt`, `setBitAt`, and
-`setIntInArrayAt`.
-
-If the index is out of range, the array is unaltered.
-
+`setIntInArrayAt`. If the index is out of range, the array is unaltered.
 -}
 setBitInArrayAt : Int -> Bit -> Array PackedInt -> Array PackedInt
 setBitInArrayAt globalIndex bit array =
@@ -860,20 +880,48 @@ setBitInArrayAt globalIndex bit array =
                 |> setIntInArrayAt globalIndex (packedInt |> setBitAt globalIndex bit)
 
 
-{-| Shift all the bits in the array an arbitrary amount to the left. Does not
-"clean up" after itself, so should be used in conjunction with `resizeArray`.
+{-| Shift all the bits in the array an `[0-15]` times to the left, filling in
+the right side with zeroes. Does not "clean up" residual bytes of only padding,
+so should be used in conjunction with `resizeArray`.
 -}
-shiftArrayLeft : Int -> Array PackedInt -> Array PackedInt
-shiftArrayLeft gapSize array =
-    Debug.todo "shift all the bits in an array to the left"
+shiftArrayLeft : Int -> Int -> Array PackedInt -> Array PackedInt
+shiftArrayLeft sizeInBits shiftAmount array =
+    let
+        newSize =
+            sizeInBits - shiftAmount
+
+        newArraySize =
+            newSize |> sizeBy Const.packedSize
+
+        actualShiftAmount =
+            shiftAmount |> clamp 0 (Const.packedSize - 1)
+    in
+    array
+        |> shiftArrayLeftHelper shiftAmount 0 (Array.repeat newArraySize 0x00)
 
 
-{-| Resize an array to fit its bits properly, dropping `PackedInt`s off the end
-if needed.
--}
-resizeArray : Int -> Array PackedInt -> Array PackedInt
-resizeArray sizeInBits array =
-    Debug.todo "resize an array"
+shiftArrayLeftHelper : Int -> Int -> Array PackedInt -> Array PackedInt -> Array PackedInt
+shiftArrayLeftHelper shiftAmount index acc array =
+    case ( array |> Array.get index, array |> Array.get (index + 1) ) of
+        ( Nothing, _ ) ->
+            acc
+
+        ( Just packedInt1, Nothing ) ->
+            acc
+                |> Array.set index
+                    (packedInt1 |> Bitwise.shiftLeftBy shiftAmount)
+
+        ( Just packedInt1, Just packedInt2 ) ->
+            let
+                ( repackedInt1, repackedInt2 ) =
+                    ( packedInt1 |> Bitwise.shiftLeftBy shiftAmount
+                    , packedInt2 |> Bitwise.shiftRightZfBy (Const.packedSize - shiftAmount)
+                    )
+
+                repackedAcc =
+                    acc |> Array.set index (repackedInt1 |> Bitwise.or repackedInt2)
+            in
+            shiftArrayLeftHelper shiftAmount (index + 1) repackedAcc array
 
 
 {-| Return the first `PackedInt` in an array, with a default of `0x00` if the
