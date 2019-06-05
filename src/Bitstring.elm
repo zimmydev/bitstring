@@ -2,7 +2,7 @@ module Bitstring exposing
     ( Bitstring, Bit(..)
     , empty, repeat, initialize
     , size, sizeInBytes, isEmpty, padding
-    , fromBytes, toBytes, fromList, toList
+    , fromBytes, toBytes, fromList, toList, fromString, toString
     , get, set
     , push, pop, append, concat, indexedMap
     , slice, left, right, dropLeft, dropRight
@@ -37,7 +37,7 @@ library is probably more suited to your needs.
 
 # Converting
 
-@docs fromBytes, toBytes, fromList, toList
+@docs fromBytes, toBytes, fromList, toList, fromString, toString
 
 
 # Getting and setting bits
@@ -330,6 +330,69 @@ toList : Bitstring -> List Bit
 toList bitstring =
     List.range 0 (size bitstring - 1)
         |> List.map (\i -> bitstring |> get i |> Maybe.withDefault Zero)
+
+
+{-| Create `Just` a bitstring from a string like "1001011", or `Nothing` if the
+string contains anything but `'1'` or `'0'`.
+
+    fromString "1001011"
+    --> Just (fromList [One, Zero, Zero, One, Zero, One, One])
+    fromString ""
+    --> Just empty
+    fromString "he110 w0r1d"
+    --> Nothing
+
+-}
+fromString : String -> Maybe Bitstring
+fromString string =
+    let
+        sizeInBits =
+            String.length string
+    in
+    string
+        |> String.foldl
+            (\c ( i, acc ) ->
+                case c of
+                    '1' ->
+                        acc |> Maybe.map (set i One) |> Tuple.pair (i + 1)
+
+                    '0' ->
+                        acc |> Maybe.map (set i Zero) |> Tuple.pair (i + 1)
+
+                    _ ->
+                        ( i + 1, Nothing )
+            )
+            ( 0, Just <| repeat sizeInBits Zero )
+        |> Tuple.second
+
+
+{-| Create a string representation of a bitstring.
+
+    toString (repeat 5 One)
+    --> "11111"
+    toString (fromList [One, One, Zero])
+    --> "110"
+    toString empty
+    --> ""
+
+This is very useful mostly for debugging but could be used for anything that
+involves displaying the bits. You can use `toString >> (++) "0b"` to create a
+valid binary literal for many programming applications.
+
+-}
+toString : Bitstring -> String
+toString bitstring =
+    bitstring
+        |> foldr
+            (\b acc ->
+                case b of
+                    One ->
+                        acc |> String.cons '1'
+
+                    Zero ->
+                        acc |> String.cons '0'
+            )
+            ""
 
 
 
