@@ -426,11 +426,6 @@ pipeline.
         |> append (fromList [ One, Zero, Zero ])
     --> fromList [ Zero, One, One, Zero, Zero ]
 
-Note that due to the nature of the internal implementation of bitstrings in
-in general, `append` is a very quick operation when the bitstring to be
-_appended to_ is a size in bits that is a multiple of 16. This is a mostly
-ignorable implementation detail, unless specific performance issues arise.
-
 -}
 append : Bitstring -> Bitstring -> Bitstring
 append (Bitstring size2 array2) (Bitstring size1 array1) =
@@ -439,40 +434,30 @@ append (Bitstring size2 array2) (Bitstring size1 array1) =
             size1 |> paddingBy 16
     in
     if size1 == 0 then
+        -- Short-circuit if bitstring1 is empty
         Bitstring size2 array2
 
     else if size2 == 0 then
+        -- Short-circuit if bitstring2 is empty
         Bitstring size1 array1
 
     else if shiftAmount == 0 then
-        -- We can simply append the arrays
+        -- There are bits, but no padding in bitstring1, so we can do a simple
+        -- array append operation
         Array.append array1 array2
             |> Bitstring (size1 + size2)
 
     else
-        -- We'll have to do some shifting
+        -- Do some bitmasking after shifting part of the first `PackedInt` from
+        -- bitstring2 to the last `PackedInt` of bitstring1
         let
-            ( lastIndex, firstIndex ) =
-                ( Array.length array1 - 1, 0 )
-
             lastPackedInt =
-                array1
-                    |> Array.get lastIndex
-                    |> Maybe.withDefault 0x00
-
-            firstPackedInt =
-                array2
-                    |> Array.get firstIndex
-                    |> Maybe.withDefault 0x00
-
-            newLastPackedInt =
-                firstPackedInt
-                    |> Bitwise.shiftLeftBy shiftAmount
-                    |> Bitwise.or firstPackedInt
+                getFirstWithDefault array2
+                    |> Bitwise.shiftRightZfBy (16 - shiftAmount)
+                    |> Bitwise.or (getLastWithDefault array1)
 
             shiftedArray1 =
-                array1
-                    |> Array.set lastIndex newLastPackedInt
+                array1 |> setLast lastPackedInt
 
             shiftedArray2 =
                 array2
@@ -811,20 +796,50 @@ setBitInArrayAt globalIndex bit array =
                 |> setIntInArrayAt globalIndex (packedInt |> setBitAt globalIndex bit)
 
 
-{-| Shifts all the bits in the array an arbitrary amount to the left. Does not
-"clean up" after itself, so should be used in conjunction with `trimArray`.
+{-| Shift all the bits in the array an arbitrary amount to the left. Does not
+"clean up" after itself, so should be used in conjunction with `resizeArray`.
 -}
 shiftArrayLeft : Int -> Array PackedInt -> Array PackedInt
 shiftArrayLeft gapSize array =
     Debug.todo "shift all the bits in an array to the left"
 
 
-{-| Resizes an array to fit its bits properly, dropping `PackedInt`s off the end
+{-| Resize an array to fit its bits properly, dropping `PackedInt`s off the end
 if needed.
 -}
 resizeArray : Int -> Array PackedInt -> Array PackedInt
 resizeArray sizeInBits array =
     Debug.todo "resize an array"
+
+
+{-| Return the first `PackedInt` in an array, with a default of `0x00` if the
+array is empty.
+-}
+getFirstWithDefault : Array PackedInt -> PackedInt
+getFirstWithDefault array =
+    array
+        |> Array.get 0
+        |> Maybe.withDefault 0x00
+
+
+{-| Return the last `PackedInt` in an array, with a default of `0x00` if the
+array is empty.
+-}
+getLastWithDefault : Array PackedInt -> PackedInt
+getLastWithDefault array =
+    array
+        |> Array.get (Array.length array - 1)
+        |> Maybe.withDefault 0x00
+
+
+setFirst : PackedInt -> Array PackedInt -> Array PackedInt
+setFirst =
+    Array.set 0
+
+
+setLast : PackedInt -> Array PackedInt -> Array PackedInt
+setLast packedInt array =
+    array |> Array.set (Array.length array - 1) packedInt
 
 
 {-| Given a bitstring's size, convert a relative index for that bitstring into
