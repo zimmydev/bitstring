@@ -698,13 +698,6 @@ xor _ _ =
 --- HELPER FUNCTIONS ---
 
 
-{-| Create a blank bitstring (all zeroes) of a given size.
--}
-blank : Size -> Bitstring
-blank sizeInBits =
-    Bitstring sizeInBits (PackedArray.sizedFor sizeInBits)
-
-
 {-| Given a bitstring's size, convert a relative index for that bitstring into
 an absolute one.
 -}
