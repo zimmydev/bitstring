@@ -192,8 +192,16 @@ which takes an index and produces a bit (`Int -> Bit`).
 
 -}
 initialize : Int -> (Int -> Bit) -> Bitstring
-initialize _ _ =
-    Debug.todo "initialize a bitstring with a closure"
+initialize n f =
+    let
+        arraySize =
+            n |> sizeBy Const.packedSize
+    in
+    List.range 0 (n - 1)
+        |> List.foldl
+            (\i acc -> acc |> setBitInArrayAt i (f i))
+            (Array.repeat arraySize 0x00)
+        |> Bitstring n
 
 
 
@@ -309,13 +317,20 @@ toBytes _ =
 
 -}
 fromList : List Bit -> Bitstring
-fromList bitList =
-    bitList
+fromList list =
+    let
+        sizeInBits =
+            List.length list
+
+        arraySize =
+            sizeInBits |> sizeBy Const.packedSize
+    in
+    list
         |> List.foldl
-            (\bit acc ->
-                acc |> push bit
-            )
-            empty
+            (\bit ( i, acc ) -> ( i + 1, acc |> setBitInArrayAt i bit ))
+            ( 0, Array.repeat arraySize 0x00 )
+        |> Tuple.second
+        |> Bitstring sizeInBits
 
 
 {-| Create a list of bits from a bitstring.
@@ -742,7 +757,7 @@ zero-padding on its right-hand (least-significant) side.
 packedIntArrayDecoder : Int -> Decoder (Array PackedInt)
 packedIntArrayDecoder sz =
     BDecode.loop
-        ( 0, Array.repeat ((sz + 1) // Const.packedSizeInBytes) 0 )
+        ( 0, Array.repeat ((sz + 1) // Const.packedSizeInBytes) 0x00 )
         (\( n, acc ) ->
             if n >= sz then
                 BDecode.succeed (Done acc)
