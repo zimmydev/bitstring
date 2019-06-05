@@ -881,23 +881,19 @@ setBitInArrayAt globalIndex bit array =
 
 
 {-| Shift all the bits in the array an `[0-15]` times to the left, filling in
-the right side with zeroes. Does not "clean up" residual bytes of only padding,
-so should be used in conjunction with `resizeArray`.
+the right side with zeroes.
 -}
 shiftArrayLeft : Int -> Int -> Array PackedInt -> Array PackedInt
 shiftArrayLeft sizeInBits shiftAmount array =
     let
-        newSize =
-            sizeInBits - shiftAmount
-
         newArraySize =
-            newSize |> sizeBy Const.packedSize
+            (sizeInBits - shiftAmount) |> sizeBy Const.packedSize
 
         actualShiftAmount =
-            shiftAmount |> clamp 0 (Const.packedSize - 1)
+            shiftAmount |> modBy Const.packedSize
     in
     array
-        |> shiftArrayLeftHelper shiftAmount 0 (Array.repeat newArraySize 0x00)
+        |> shiftArrayLeftHelper actualShiftAmount 0 (Array.repeat newArraySize 0x00)
 
 
 shiftArrayLeftHelper : Int -> Int -> Array PackedInt -> Array PackedInt -> Array PackedInt
@@ -909,19 +905,32 @@ shiftArrayLeftHelper shiftAmount index acc array =
         ( Just packedInt1, Nothing ) ->
             acc
                 |> Array.set index
-                    (packedInt1 |> Bitwise.shiftLeftBy shiftAmount)
+                    (packedInt1
+                        |> Bitwise.shiftLeftBy shiftAmount
+                        |> discardUpper
+                    )
 
         ( Just packedInt1, Just packedInt2 ) ->
             let
-                ( repackedInt1, repackedInt2 ) =
+                ( shiftedInt1, shiftedInt2 ) =
                     ( packedInt1 |> Bitwise.shiftLeftBy shiftAmount
                     , packedInt2 |> Bitwise.shiftRightZfBy (Const.packedSize - shiftAmount)
                     )
 
-                repackedAcc =
-                    acc |> Array.set index (repackedInt1 |> Bitwise.or repackedInt2)
+                repackedArray =
+                    acc
+                        |> Array.set index
+                            (shiftedInt1
+                                |> Bitwise.or shiftedInt2
+                                |> discardUpper
+                            )
             in
-            shiftArrayLeftHelper shiftAmount (index + 1) repackedAcc array
+            shiftArrayLeftHelper shiftAmount (index + 1) repackedArray array
+
+
+discardUpper : PackedInt -> PackedInt
+discardUpper packedInt =
+    packedInt |> Bitwise.and 0xFFFF
 
 
 {-| Return the first `PackedInt` in an array, with a default of `0x00` if the
