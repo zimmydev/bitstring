@@ -67,6 +67,7 @@ library is probably more suited to your needs.
 -}
 
 import Array exposing (Array)
+import Bitstring.Constants as Const
 import Bitwise
 import Bytes exposing (Bytes)
 import Bytes.Decode as BDecode exposing (Decoder, Step(..))
@@ -141,8 +142,9 @@ type alias Size =
     Int
 
 
-{-| A `PackedInt` comprises two 8-bit integers packed into 16 bits. This type
-only appears in this library for documentation purposes.
+{-| A `PackedInt` comprises 8-bit integers packed into either 16 or 24 bits,
+depending on the implementation. Currently, it is implemented as 16 bits. This
+type only appears in this library for documentation purposes.
 -}
 type alias PackedInt =
     Int
@@ -283,7 +285,7 @@ fromBytes bytes =
             Bytes.width bytes
     in
     bytes
-        |> BDecode.decode (packedInt16ArrayDecoder sz)
+        |> BDecode.decode (packedIntArrayDecoder sz)
         |> Maybe.withDefault Array.empty
         |> Bitstring (sz * 8)
 
@@ -443,8 +445,8 @@ push bit (Bitstring sizeInBits array) =
         writeIndex =
             sizeInBits
     in
-    if sizeInBits |> isAlignedBy 16 then
-        -- We're crossing a 16-bit "boundary", so we need to make room.
+    if sizeInBits |> isAlignedBy Const.packedSize then
+        -- We're crossing a `PackedInt` "boundary", so we need to make room.
         array
             |> Array.push (msbMask bit)
             |> Bitstring (sizeInBits + 1)
@@ -490,7 +492,7 @@ append : Bitstring -> Bitstring -> Bitstring
 append (Bitstring size2 array2) (Bitstring size1 array1) =
     let
         shiftAmount =
-            size1 |> paddingBy 16
+            size1 |> paddingBy Const.packedSize
     in
     if size1 == 0 then
         -- Short-circuit if bitstring1 is empty
@@ -512,7 +514,7 @@ append (Bitstring size2 array2) (Bitstring size1 array1) =
         let
             lastPackedInt =
                 getFirstWithDefault array2
-                    |> Bitwise.shiftRightZfBy (16 - shiftAmount)
+                    |> Bitwise.shiftRightZfBy (Const.packedSize - shiftAmount)
                     |> Bitwise.or (getLastWithDefault array1)
 
             shiftedArray1 =
@@ -586,8 +588,9 @@ slice start end (Bitstring sizeInBits array) =
 
 -}
 left : Int -> Bitstring -> Bitstring
-left _ _ =
-    Debug.todo "grab the left n bits (can be written in terms of dropRight)"
+left n bitstring =
+    bitstring
+        |> dropRight (size bitstring - n)
 
 
 {-| Take the rightmost `n` bits of a bitstring.
@@ -715,14 +718,14 @@ isAlignedBy divisionSize =
 
 
 {-| Decode bytes into bitstring's internal representation; i.e., an array of
-16-bit `PackedInt`s encoding two bytes each of the input bytes. If the size of
-the input is not an even integer, the last `PackedInt` will contain 8 bits worth
-of zero-padding on its right-hand (least-significant) side.
+`PackedInt`s encoding multiple bytes each of the input bytes. If the size of the
+input is not an even integer, the last `PackedInt` will contain 8 bits worth of
+zero-padding on its right-hand (least-significant) side.
 -}
-packedInt16ArrayDecoder : Int -> Decoder (Array PackedInt)
-packedInt16ArrayDecoder sz =
+packedIntArrayDecoder : Int -> Decoder (Array PackedInt)
+packedIntArrayDecoder sz =
     BDecode.loop
-        ( 0, Array.repeat ((sz + 1) // 2) 0 )
+        ( 0, Array.repeat ((sz + 1) // Const.packedSizeInBytes) 0 )
         (\( n, acc ) ->
             if n >= sz then
                 BDecode.succeed (Done acc)
@@ -733,7 +736,7 @@ packedInt16ArrayDecoder sz =
                         (\x ->
                             let
                                 arrayIndex =
-                                    n // 2
+                                    n // Const.packedSizeInBytes
 
                                 nextInt16 =
                                     if (n |> modBy 2) == 0 then
@@ -750,18 +753,18 @@ packedInt16ArrayDecoder sz =
         )
 
 
-{-| Generate a 16-bit mask with only the left-most (most-significant) bit set or
-unset, depending on its `bit` argument. Used for creating a simple mask.
+{-| Generate a mask with only the left-most (most-significant) bit set or unset
+depending on its `bit` argument. Used for creating a simple mask.
 -}
 msbMask : Bit -> PackedInt
 msbMask bit =
     case bit of
         One ->
-            -- 0b1000… (16 bits)
-            0x8000
+            -- 0b1000…
+            0x01 |> Bitwise.shiftLeftBy (Const.packedSize - 1)
 
         Zero ->
-            -- 0b0000… (16 bits)
+            -- 0b0000…
             0x00
 
 
@@ -771,7 +774,7 @@ getBitAt : Int -> PackedInt -> Bit
 getBitAt globalIndex packedInt =
     let
         bitIndex =
-            globalIndex |> modBy 16
+            globalIndex |> modBy Const.packedSize
 
         bitmask =
             msbMask One |> Bitwise.shiftRightZfBy bitIndex
@@ -791,7 +794,7 @@ getIntInArrayAt : Int -> Array PackedInt -> Maybe PackedInt
 getIntInArrayAt globalIndex array =
     let
         packedIntIndex =
-            globalIndex // 16
+            globalIndex // Const.packedSize
     in
     array
         |> Array.get packedIntIndex
@@ -816,7 +819,7 @@ setBitAt : Int -> Bit -> PackedInt -> PackedInt
 setBitAt globalIndex bit packedInt =
     let
         bitIndex =
-            globalIndex |> modBy 16
+            globalIndex |> modBy Const.packedSize
 
         bitmask =
             msbMask bit |> Bitwise.shiftRightZfBy bitIndex
@@ -834,7 +837,7 @@ setIntInArrayAt : Int -> PackedInt -> Array PackedInt -> Array PackedInt
 setIntInArrayAt globalIndex packedInt array =
     let
         packedIntIndex =
-            globalIndex // 16
+            globalIndex // Const.packedSize
     in
     array
         |> Array.set packedIntIndex packedInt
