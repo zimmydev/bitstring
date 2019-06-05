@@ -12,5 +12,5 @@ elm install zimmydev/bitstring
 
 # Documentation
 
-See the [`zimmydev/bitstring`](https://package.elm-lang.org/packages/zimmydev/bitstring/latest/Bitstring)
-package on _elm-lang.org_ for the primary usage docs.
+* [`Bitstring`](https://package.elm-lang.org/packages/zimmydev/bitstring/latest/Bitstring)
+* [`Bitstring.Parser`](https://package.elm-lang.org/packages/zimmydev/bitstring/latest/Bitstring-Parser)
