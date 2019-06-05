@@ -67,10 +67,14 @@ library is probably more suited to your needs.
 -}
 
 import Array exposing (Array)
+import Bitstring.Index as Index exposing (Index)
+import Bitstring.Size as Size exposing (Size)
 import Bitwise
 import Bytes exposing (Bytes)
 import Bytes.Decode as BDecode exposing (Decoder, Step(..))
 import Maybe
+import PackedArray exposing (PackedArray)
+import PackedInt exposing (PackedInt)
 
 
 
@@ -80,7 +84,7 @@ import Maybe
 {-| `Bitstring` is a variable-length string of bits.
 -}
 type Bitstring
-    = Bitstring Size (Array PackedInt)
+    = Bitstring Size PackedArray
 
 
 {-| A `Bit` is either `One` or `Zero`.
@@ -130,26 +134,6 @@ defaultSizing =
 
 
 
---- TYPES FOR DOCUMENTATION ---
-
-
-{-| The size (in bits) of the `Bitstring`. This happens to be the same as the
-index of the next bit to be written with a `push`. This type only appears in
-this library for documentation purposes.
--}
-type alias Size =
-    Int
-
-
-{-| A `PackedInt` comprises 8-bit integers packed into either 16 or 24 bits,
-depending on the implementation. Currently, it is implemented as 16 bits. This
-type only appears in this library for documentation purposes.
--}
-type alias PackedInt =
-    Int
-
-
-
 --- CREATING A BITSTRING ---
 
 
@@ -192,14 +176,10 @@ which takes an index and produces a bit (`Int -> Bit`).
 -}
 initialize : Int -> (Int -> Bit) -> Bitstring
 initialize n f =
-    let
-        arraySize =
-            n |> sizeBy 16
-    in
     List.range 0 (n - 1)
         |> List.foldl
-            (\i acc -> acc |> setBitInArrayAt i (f i))
-            (Array.repeat arraySize 0x00)
+            (\i acc -> acc |> PackedArray.setBit i (f i |> bitToInt))
+            (PackedArray.sizedFor n)
         |> Bitstring n
 
 
@@ -233,7 +213,7 @@ that would be needed to represent the it when converting from a `Bitstring` to
 -}
 sizeInBytes : Bitstring -> Int
 sizeInBytes bitstring =
-    size bitstring |> sizeBy 8
+    size bitstring |> Size.by 8
 
 
 {-| Determine if a bitstring is empty.
@@ -266,7 +246,7 @@ Notice that the empty bitstring is considered aligned (i.e., the padding is 0).
 -}
 padding : Bitstring -> Int
 padding bitstring =
-    size bitstring |> paddingBy 8
+    size bitstring |> Size.paddingBy 8
 
 
 
@@ -288,13 +268,13 @@ exact same order.
 fromBytes : Bytes -> Bitstring
 fromBytes bytes =
     let
-        sz =
+        width =
             Bytes.width bytes
     in
     bytes
-        |> BDecode.decode (packedIntArrayDecoder sz)
+        |> BDecode.decode (PackedArray.decoder width)
         |> Maybe.withDefault Array.empty
-        |> Bitstring (sz * 8)
+        |> Bitstring (width * 8)
 
 
 {-| Create some `Bytes` from a bitstring.
@@ -320,14 +300,12 @@ fromList list =
     let
         sizeInBits =
             List.length list
-
-        arraySize =
-            sizeInBits |> sizeBy 16
     in
     list
+        |> List.map bitToInt
         |> List.foldl
-            (\bit ( i, acc ) -> ( i + 1, acc |> setBitInArrayAt i bit ))
-            ( 0, Array.repeat arraySize 0x00 )
+            (\bit ( i, acc ) -> ( i + 1, acc |> PackedArray.setBit i bit ))
+            ( 0, PackedArray.sizedFor sizeInBits )
         |> Tuple.second
         |> Bitstring sizeInBits
 
@@ -366,16 +344,17 @@ fromString string =
             (\c ( i, acc ) ->
                 case c of
                     '1' ->
-                        acc |> Maybe.map (set i One) |> Tuple.pair (i + 1)
+                        ( i + 1, acc |> Maybe.map (PackedArray.setBit i 1) )
 
                     '0' ->
-                        acc |> Maybe.map (set i Zero) |> Tuple.pair (i + 1)
+                        ( i + 1, acc |> Maybe.map (PackedArray.setBit i 0) )
 
                     _ ->
                         ( i + 1, Nothing )
             )
-            ( 0, Just <| repeat sizeInBits Zero )
+            ( 0, Just <| PackedArray.sizedFor sizeInBits )
         |> Tuple.second
+        |> Maybe.map (Bitstring sizeInBits)
 
 
 {-| Create a string representation of a bitstring.
@@ -419,13 +398,14 @@ the index is out of range.
 
 -}
 get : Int -> Bitstring -> Maybe Bit
-get index (Bitstring sizeInBits array) =
-    if index < 0 || index >= sizeInBits then
+get i (Bitstring sizeInBits array) =
+    if i < 0 || i >= sizeInBits then
         Nothing
 
     else
         array
-            |> getBitInArrayAt index
+            |> PackedArray.getBit i
+            |> Maybe.map intToBit
 
 
 {-| Set or unset the individual bit at the given index in the bitstring. If the
@@ -436,9 +416,9 @@ index is out of range, the bitstring is unaltered.
 
 -}
 set : Int -> Bit -> Bitstring -> Bitstring
-set index bit (Bitstring sizeInBits array) =
+set i bit (Bitstring sizeInBits array) =
     array
-        |> setBitInArrayAt index bit
+        |> PackedArray.setBit i (bitToInt bit)
         |> Bitstring sizeInBits
 
 
@@ -455,19 +435,15 @@ you'll want to use if you're constructing bitstrings at runtime.
 -}
 push : Bit -> Bitstring -> Bitstring
 push bit (Bitstring sizeInBits array) =
-    let
-        writeIndex =
-            sizeInBits
-    in
-    if sizeInBits |> isAlignedBy 16 then
+    if sizeInBits |> Size.isAlignedBy 16 then
         -- We're crossing a `PackedInt` "boundary", so we need to make room.
         array
-            |> Array.push (msbMask bit)
+            |> Array.push (PackedInt.msb (bitToInt bit))
             |> Bitstring (sizeInBits + 1)
 
     else
         array
-            |> setBitInArrayAt writeIndex bit
+            |> PackedArray.setBit sizeInBits (bitToInt bit)
             |> Bitstring (sizeInBits + 1)
 
 
@@ -506,7 +482,7 @@ append : Bitstring -> Bitstring -> Bitstring
 append (Bitstring size2 array2) (Bitstring size1 array1) =
     let
         shiftAmount =
-            size1 |> paddingBy 16
+            size1 |> Size.paddingBy 16
     in
     if size1 == 0 then
         -- Short-circuit if bitstring1 is empty
@@ -526,16 +502,16 @@ append (Bitstring size2 array2) (Bitstring size1 array1) =
         -- Do some bitmasking after shifting part of the first `PackedInt` from
         -- bitstring2 to the last `PackedInt` of bitstring1
         let
-            lastPackedInt =
-                getFirstWithDefault array2
-                    |> Bitwise.shiftRightZfBy (16 - shiftAmount)
-                    |> Bitwise.or (getLastWithDefault array1)
+            newLast =
+                PackedArray.firstOrZero array2
+                    |> PackedInt.shiftRightBy (16 - shiftAmount)
+                    |> PackedInt.combine (PackedArray.lastOrZero array1)
 
             shiftedArray1 =
-                array1 |> setLast lastPackedInt
+                array1 |> PackedArray.setLast newLast
 
             shiftedArray2 =
-                array2 |> shiftArrayLeft size2 shiftAmount
+                array2 |> PackedArray.dropLeft shiftAmount size2
         in
         Array.append shiftedArray1 shiftedArray2
             |> Bitstring (size1 + size2)
@@ -630,7 +606,7 @@ dropLeft n (Bitstring sizeInBits array) =
 
     else
         array
-            |> shiftArrayLeft sizeInBits n
+            |> PackedArray.dropLeft sizeInBits n
             |> Bitstring (sizeInBits - n |> max 0)
 
 
@@ -722,272 +698,44 @@ xor _ _ =
 --- HELPER FUNCTIONS ---
 
 
-{-| Calculates the minimum number of divisions that would be needed to represent
-a bitstring of some size given some division size. `sizeBy 8`, for example,
-calculates the minimum number of bytes needed.
+{-| Create a blank bitstring (all zeroes) of a given size.
 -}
-sizeBy : Int -> Int -> Int
-sizeBy divisionSize sizeInBits =
-    if sizeInBits > 0 then
-        (sizeInBits - 1) // divisionSize + 1
-
-    else
-        0
-
-
-{-| Calculates the size of the minimum padding that would need to be introduced
-for a sequence given its size and the desired division size.
--}
-paddingBy : Int -> Int -> Int
-paddingBy divisionSize sizeInBits =
-    (divisionSize - 1) - (sizeInBits - 1 |> modBy divisionSize)
-
-
-isAlignedBy : Int -> Int -> Bool
-isAlignedBy divisionSize =
-    paddingBy divisionSize >> (==) 0
-
-
-{-| Decode bytes into bitstring's internal representation; i.e., an array of
-`PackedInt`s encoding multiple bytes each of the input bytes. If the size of the
-input is not an even integer, the last `PackedInt` will contain 8 bits worth of
-zero-padding on its right-hand (least-significant) side.
--}
-packedIntArrayDecoder : Int -> Decoder (Array PackedInt)
-packedIntArrayDecoder sz =
-    BDecode.loop
-        ( 0, Array.repeat ((sz + 1) // 2) 0x00 )
-        (\( n, acc ) ->
-            if n >= sz then
-                BDecode.succeed (Done acc)
-
-            else
-                BDecode.unsignedInt8
-                    |> BDecode.map
-                        (\x ->
-                            let
-                                arrayIndex =
-                                    n // 2
-
-                                nextInt16 =
-                                    if (n |> modBy 2) == 0 then
-                                        x |> Bitwise.shiftLeftBy 8
-
-                                    else
-                                        acc
-                                            |> Array.get arrayIndex
-                                            |> Maybe.withDefault 0x00
-                                            |> Bitwise.or x
-                            in
-                            Loop ( n + 1, acc |> Array.set arrayIndex nextInt16 )
-                        )
-        )
-
-
-{-| Generate a mask with only the left-most (most-significant) bit set or unset
-depending on its `bit` argument. Used for creating a simple mask.
--}
-msbMask : Bit -> PackedInt
-msbMask bit =
-    case bit of
-        One ->
-            -- 0b1000…
-            0x01 |> Bitwise.shiftLeftBy (16 - 1)
-
-        Zero ->
-            -- 0b0000…
-            0x00
-
-
-{-| Get the bit within a `PackedInt` at the given global bit-index.
-
-You probably want `getBitInArrayAt`.
-
--}
-getBitAt : Int -> PackedInt -> Bit
-getBitAt globalIndex packedInt =
-    let
-        bitIndex =
-            globalIndex |> modBy 16
-
-        bitmask =
-            msbMask One |> Bitwise.shiftRightZfBy bitIndex
-    in
-    case Bitwise.and packedInt bitmask of
-        0x00 ->
-            Zero
-
-        _ ->
-            One
-
-
-{-| Get `Just` the `PackedInt` in a `PackedInt` array that contains the bit at
-the given global bit-index, or `Nothing` if the index is out of range.
-
-You probably want `getBitInArrayAt`.
-
--}
-getIntInArrayAt : Int -> Array PackedInt -> Maybe PackedInt
-getIntInArrayAt globalIndex array =
-    let
-        packedIntIndex =
-            globalIndex // 16
-    in
-    array
-        |> Array.get packedIntIndex
-
-
-{-| A convenience function combining `getIntInArrayAt` and `getBitAt`.
--}
-getBitInArrayAt : Int -> Array PackedInt -> Maybe Bit
-getBitInArrayAt globalIndex array =
-    array
-        |> getIntInArrayAt globalIndex
-        |> Maybe.map (getBitAt globalIndex)
-
-
-{-| Set the bit within a `PackedInt` at the given global bit-index to the given
-bit. If the index is out of range, the integer is unaltered.
-
-You probably want to use `setBitInArrayAt`
-
--}
-setBitAt : Int -> Bit -> PackedInt -> PackedInt
-setBitAt globalIndex bit packedInt =
-    let
-        bitIndex =
-            globalIndex |> modBy 16
-
-        bitmask =
-            msbMask bit |> Bitwise.shiftRightZfBy bitIndex
-    in
-    Bitwise.or packedInt bitmask
-
-
-{-| Set the `PackedInt` in the array which holds the bit at the given bit-index
-to another `PackedInt`. If the index is out of range, the array is unaltered.
-
-You probably want to use `setBitInArrayAt`
-
--}
-setIntInArrayAt : Int -> PackedInt -> Array PackedInt -> Array PackedInt
-setIntInArrayAt globalIndex packedInt array =
-    let
-        packedIntIndex =
-            globalIndex // 16
-    in
-    array
-        |> Array.set packedIntIndex packedInt
-
-
-{-| A convenience function combining `getIntInArrayAt`, `setBitAt`, and
-`setIntInArrayAt`. If the index is out of range, the array is unaltered.
--}
-setBitInArrayAt : Int -> Bit -> Array PackedInt -> Array PackedInt
-setBitInArrayAt globalIndex bit array =
-    case array |> getIntInArrayAt globalIndex of
-        Nothing ->
-            array
-
-        Just packedInt ->
-            array
-                |> setIntInArrayAt globalIndex (packedInt |> setBitAt globalIndex bit)
-
-
-{-| Shift all the bits in the array an `[0-15]` times to the left, filling in
-the right side with zeroes.
--}
-shiftArrayLeft : Int -> Int -> Array PackedInt -> Array PackedInt
-shiftArrayLeft sizeInBits shiftAmount array =
-    let
-        newArraySize =
-            (sizeInBits - shiftAmount) |> sizeBy 16
-
-        actualShiftAmount =
-            shiftAmount |> modBy 16
-    in
-    array
-        |> shiftArrayLeftHelper actualShiftAmount 0 (Array.repeat newArraySize 0x00)
-
-
-shiftArrayLeftHelper : Int -> Int -> Array PackedInt -> Array PackedInt -> Array PackedInt
-shiftArrayLeftHelper shiftAmount index acc array =
-    case ( array |> Array.get index, array |> Array.get (index + 1) ) of
-        ( Nothing, _ ) ->
-            acc
-
-        ( Just packedInt1, Nothing ) ->
-            acc
-                |> Array.set index
-                    (packedInt1
-                        |> Bitwise.shiftLeftBy shiftAmount
-                        |> discardUpper
-                    )
-
-        ( Just packedInt1, Just packedInt2 ) ->
-            let
-                ( shiftedInt1, shiftedInt2 ) =
-                    ( packedInt1 |> Bitwise.shiftLeftBy shiftAmount
-                    , packedInt2 |> Bitwise.shiftRightZfBy (16 - shiftAmount)
-                    )
-
-                repackedArray =
-                    acc
-                        |> Array.set index
-                            (shiftedInt1
-                                |> Bitwise.or shiftedInt2
-                                |> discardUpper
-                            )
-            in
-            shiftArrayLeftHelper shiftAmount (index + 1) repackedArray array
-
-
-discardUpper : PackedInt -> PackedInt
-discardUpper packedInt =
-    packedInt |> Bitwise.and 0xFFFF
-
-
-{-| Return the first `PackedInt` in an array, with a default of `0x00` if the
-array is empty.
--}
-getFirstWithDefault : Array PackedInt -> PackedInt
-getFirstWithDefault array =
-    array
-        |> Array.get 0
-        |> Maybe.withDefault 0x00
-
-
-{-| Return the last `PackedInt` in an array, with a default of `0x00` if the
-array is empty.
--}
-getLastWithDefault : Array PackedInt -> PackedInt
-getLastWithDefault array =
-    array
-        |> Array.get (Array.length array - 1)
-        |> Maybe.withDefault 0x00
-
-
-setFirst : PackedInt -> Array PackedInt -> Array PackedInt
-setFirst =
-    Array.set 0
-
-
-setLast : PackedInt -> Array PackedInt -> Array PackedInt
-setLast packedInt array =
-    array |> Array.set (Array.length array - 1) packedInt
+blank : Size -> Bitstring
+blank sizeInBits =
+    Bitstring sizeInBits (PackedArray.sizedFor sizeInBits)
 
 
 {-| Given a bitstring's size, convert a relative index for that bitstring into
 an absolute one.
 -}
-translateIndex : Int -> Int -> Int
-translateIndex sizeInBits index =
+translateIndex : Size -> Index -> Index
+translateIndex sizeInBits i =
     let
         adjustedIndex =
-            if index < 0 then
-                sizeInBits + index
+            if i < 0 then
+                sizeInBits + i
 
             else
-                index
+                i
     in
     adjustedIndex |> clamp 0 sizeInBits
+
+
+bitToInt : Bit -> Int
+bitToInt bit =
+    case bit of
+        Zero ->
+            0x00
+
+        One ->
+            0x01
+
+
+intToBit : Int -> Bit
+intToBit int =
+    case int of
+        0x00 ->
+            Zero
+
+        _ ->
+            One
