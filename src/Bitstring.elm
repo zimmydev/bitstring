@@ -615,9 +615,13 @@ right n bitstring =
 -}
 dropLeft : Int -> Bitstring -> Bitstring
 dropLeft n (Bitstring sizeInBits array) =
-    array
-        |> PackedArray.dropLeft n sizeInBits
-        |> Bitstring (sizeInBits - n |> clampPositive)
+    if n <= 0 then
+        Bitstring sizeInBits array
+
+    else
+        array
+            |> PackedArray.dropLeft n sizeInBits
+            |> Bitstring (sizeInBits - n |> clampPositive)
 
 
 {-| Drop `n` bits from the right side of a bitstring.
@@ -628,9 +632,13 @@ dropLeft n (Bitstring sizeInBits array) =
 -}
 dropRight : Int -> Bitstring -> Bitstring
 dropRight n (Bitstring sizeInBits array) =
-    array
-        |> PackedArray.dropRight n sizeInBits
-        |> Bitstring (sizeInBits - n |> clampPositive)
+    if n <= 0 then
+        Bitstring sizeInBits array
+
+    else
+        array
+            |> PackedArray.dropRight n sizeInBits
+            |> Bitstring (sizeInBits - n |> clampPositive)
 
 
 
