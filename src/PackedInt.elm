@@ -24,8 +24,8 @@ that storing 32 bits has an undesired affect.
 
 -}
 
-import Bitstring.Index as Index exposing (Index)
 import Bitwise
+import Index as Index exposing (Index)
 
 
 

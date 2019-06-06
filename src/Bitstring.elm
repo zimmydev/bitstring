@@ -67,14 +67,13 @@ library is probably more suited to your needs.
 -}
 
 import Array exposing (Array)
-import Bitstring.Index as Index exposing (Index)
-import Bitstring.Size as Size exposing (Size)
-import Bitwise
 import Bytes exposing (Bytes)
 import Bytes.Decode as BDecode exposing (Decoder, Step(..))
+import Index as Index exposing (Index)
 import Maybe
 import PackedArray exposing (PackedArray)
 import PackedInt exposing (PackedInt)
+import Size exposing (Size)
 
 
 
@@ -372,16 +371,18 @@ valid binary literal for many programming applications.
 
 -}
 toString : Bitstring -> String
-toString bitstring =
-    bitstring
-        |> foldr
-            (\b acc ->
-                case b of
-                    One ->
-                        acc |> String.cons '1'
+toString (Bitstring sizeInBits array) =
+    array
+        |> PackedArray.fold
+            Index.origin
+            (\i -> i < sizeInBits)
+            increment
+            (\_ b acc ->
+                if b == 0 then
+                    String.cons '0' acc
 
-                    Zero ->
-                        acc |> String.cons '0'
+                else
+                    String.cons '1' acc
             )
             ""
 
@@ -537,8 +538,17 @@ Using this function, you could, for example, set or unset bits at specific
 indices in a bitstring, without having to use `set` for each bit.
 -}
 indexedMap : (Int -> Bit -> Bit) -> Bitstring -> Bitstring
-indexedMap _ _ =
-    Debug.todo "map over a bitstring with a bit index"
+indexedMap f (Bitstring sizeInBits array) =
+    array
+        |> PackedArray.fold
+            Index.origin
+            (\i -> i < sizeInBits)
+            increment
+            (\i b acc ->
+                acc |> PackedArray.setBit i (intToBit b |> f i |> bitToInt)
+            )
+            (PackedArray.sizedFor sizeInBits)
+        |> Bitstring sizeInBits
 
 
 
@@ -560,13 +570,17 @@ bitstring.
 slice : Int -> Int -> Bitstring -> Bitstring
 slice start end (Bitstring sizeInBits array) =
     let
-        absoluteStart =
-            start |> translateIndex sizeInBits
+        ( correctStart, correctEnd ) =
+            ( start |> translateIndex sizeInBits
+            , end |> translateIndex sizeInBits
+            )
 
-        asboluteEnd =
-            end |> translateIndex sizeInBits
+        newSizeInBits =
+            correctEnd - correctStart |> clampPositive
     in
-    Debug.todo "bits to a slice of bits"
+    array
+        |> PackedArray.slice correctStart correctEnd sizeInBits
+        |> Bitstring newSizeInBits
 
 
 {-| Take the leftmost `n` bits of a bitstring.
@@ -601,13 +615,9 @@ right n bitstring =
 -}
 dropLeft : Int -> Bitstring -> Bitstring
 dropLeft n (Bitstring sizeInBits array) =
-    if n <= 0 then
-        Bitstring sizeInBits array
-
-    else
-        array
-            |> PackedArray.dropLeft sizeInBits n
-            |> Bitstring (sizeInBits - n |> max 0)
+    array
+        |> PackedArray.dropLeft n sizeInBits
+        |> Bitstring (sizeInBits - n |> clampPositive)
 
 
 {-| Drop `n` bits from the right side of a bitstring.
@@ -617,8 +627,10 @@ dropLeft n (Bitstring sizeInBits array) =
 
 -}
 dropRight : Int -> Bitstring -> Bitstring
-dropRight _ _ =
-    Debug.todo "drop the right n bits"
+dropRight n (Bitstring sizeInBits array) =
+    array
+        |> PackedArray.dropRight n sizeInBits
+        |> Bitstring (sizeInBits - n |> clampPositive)
 
 
 
@@ -629,32 +641,28 @@ dropRight _ _ =
 meaning _fold from the left_.
 -}
 foldl : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
-foldl f acc bitstring =
-    bitstring
-        |> fold 0 (\i -> i < size bitstring) ((+) 1) f acc
+foldl f acc (Bitstring sizeInBits array) =
+    array
+        |> PackedArray.fold
+            Index.origin
+            (\i -> i < sizeInBits)
+            increment
+            (\i b acc_ -> f (intToBit b) acc_)
+            acc
 
 
 {-| Reduce a bitstring from the right. `foldr` is conventional nomenclature
 meaning _fold from the right_.
 -}
 foldr : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
-foldr f acc bitstring =
-    bitstring
-        |> fold (size bitstring - 1) (\i -> i >= 0) (\i -> i - 1) f acc
-
-
-fold : Int -> (Int -> Bool) -> (Int -> Int) -> (Bit -> acc -> acc) -> acc -> Bitstring -> acc
-fold index while step f acc bitstring =
-    if while index then
-        case bitstring |> get index of
-            Nothing ->
-                acc
-
-            Just bit ->
-                fold (step index) while step f (f bit acc) bitstring
-
-    else
-        acc
+foldr f acc (Bitstring sizeInBits array) =
+    array
+        |> PackedArray.fold
+            sizeInBits
+            (\i -> i >= 0)
+            decrement
+            (\i b acc_ -> f (intToBit b) acc_)
+            acc
 
 
 
@@ -664,8 +672,15 @@ fold index while step f acc bitstring =
 {-| Return a bitstring with each bit flipped.
 -}
 complement : Bitstring -> Bitstring
-complement _ =
-    Debug.todo "invert the bits"
+complement (Bitstring sizeInBits array) =
+    array
+        |> PackedArray.fold
+            Index.origin
+            (\i -> i < sizeInBits)
+            increment
+            (\i b acc -> acc |> PackedArray.setBit i (flip b))
+            (PackedArray.sizedFor sizeInBits)
+        |> Bitstring sizeInBits
 
 
 {-| Perform a bitwise _and_ operation between two bitstrings.
@@ -732,3 +747,28 @@ intToBit int =
 
         _ ->
             One
+
+
+flip : Int -> Int
+flip bit =
+    case bit of
+        0 ->
+            1
+
+        _ ->
+            0
+
+
+increment : number -> number
+increment x =
+    x + 1
+
+
+decrement : number -> number
+decrement x =
+    x - 1
+
+
+clampPositive : number -> number
+clampPositive =
+    max 0

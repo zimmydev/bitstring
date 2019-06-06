@@ -1,20 +1,25 @@
-module PackedArray exposing (PackedArray, decoder, dropLeft, firstOrZero, getBit, lastOrZero, setBit, setFirst, setLast, sizedFor)
+module PackedArray exposing (PackedArray, decoder, dropLeft, dropRight, firstOrZero, fold, getBit, lastOrZero, setBit, setFirst, setLast, sizedFor, slice)
+
+{-| THIS IS AN INTERNAL MODULE.
+
+A `PackedArray` is just an array of `PackedInt`s.
+
+-}
 
 import Array exposing (Array)
-import Bitstring.Index as Index exposing (Index)
-import Bitstring.Size as Size exposing (Size)
 import Bitwise
 import Bytes exposing (Bytes)
 import Bytes.Decode as BDecode exposing (Decoder, Step(..))
+import Index exposing (Index)
 import PackedInt exposing (PackedInt)
+import Size exposing (Size)
 
 
 
 --- TYPES ---
 
 
-{-| A `PackedArray` is just an array of `PackedInt`s. It is most of
-`Bitstring`'s internal representation.
+{-| A `PackedArray` is just an array of `PackedInt`s.
 -}
 type alias PackedArray =
     Array PackedInt
@@ -54,26 +59,23 @@ decoder byteSize =
                     |> BDecode.map
                         (\x ->
                             let
-                                arrayIndex =
-                                    n // 2
-
-                                nextInt16 =
+                                packedInt =
                                     if (n |> modBy 2) == 0 then
                                         x |> Bitwise.shiftLeftBy 8
 
                                     else
                                         acc
-                                            |> Array.get arrayIndex
+                                            |> Array.get (n // 2)
                                             |> Maybe.withDefault 0x00
                                             |> Bitwise.or x
                             in
-                            Loop ( n + 1, acc |> Array.set arrayIndex nextInt16 )
+                            Loop ( n + 1, acc |> Array.set (n // 2) packedInt )
                         )
         )
 
 
-{-| Create a blank packed array that is sized large enough to bit the given
-number of bits.
+{-| Create a packed array filled with `0`'s that is sized large enough to fit
+the given number of bits.
 -}
 sizedFor : Size -> PackedArray
 sizedFor size =
@@ -109,9 +111,8 @@ setBit i bit array =
         Nothing ->
             array
 
-        Just int16 ->
-            array
-                |> setPackedInt i (int16 |> PackedInt.setBit i bit)
+        Just int ->
+            array |> setPackedInt i (int |> PackedInt.setBit i bit)
 
 
 {-| Set the `PackedInt` in the array which holds the bit at the given index
@@ -127,21 +128,21 @@ setPackedInt i int array =
 
 
 firstOrZero : PackedArray -> PackedInt
-firstOrZero pack =
-    pack
+firstOrZero array =
+    array
         |> Array.get 0
         |> Maybe.withDefault 0x00
 
 
 lastOrZero : PackedArray -> PackedInt
-lastOrZero pack =
-    pack
-        |> Array.get (Array.length pack - 1)
+lastOrZero array =
+    array
+        |> Array.get (Array.length array - 1)
         |> Maybe.withDefault 0x00
 
 
 
---- TRANSFORMING A PACKED-ARRAY ---
+--- TRANSFORMING A PACKED-ARRAY BY PACKED-INT ---
 
 
 setFirst : PackedInt -> PackedArray -> PackedArray
@@ -150,43 +151,120 @@ setFirst =
 
 
 setLast : PackedInt -> PackedArray -> PackedArray
-setLast packedInt array =
-    array |> Array.set (Array.length array - 1) packedInt
+setLast int array =
+    array |> Array.set (Array.length array - 1) int
 
 
-{-| Shift all the bits in the array an `[0-15]` times to the left, filling in
-the right side with zeroes.
+
+--- TRANSFORMING A PACKED-ARRAY BY BITS ---
+
+
+{-| Fold over a bitstring using an index, a predicate, and a step function. This
+allows for folding in either direction. The given folding function takes an
+index as its first parameter for convenience; it can be ignored.
+-}
+fold :
+    Index
+    -> (Index -> Bool)
+    -> (Index -> Index)
+    -> (Index -> Bit -> acc -> acc)
+    -> acc
+    -> PackedArray
+    -> acc
+fold i while step f acc array =
+    if while i then
+        case array |> getBit i of
+            Nothing ->
+                acc
+
+            Just bit ->
+                array |> fold (step i) while step f (f i bit acc)
+
+    else
+        acc
+
+
+{-| Slice a string of bits in a packed array from a start index up to (but not
+including) an end index.
+-}
+slice : Index -> Index -> Size -> PackedArray -> PackedArray
+slice start end sz array =
+    let
+        sliceSize =
+            end - start
+
+        arraySlice =
+            array
+                |> Array.slice
+                    (start |> Index.array)
+                    (end |> Index.decrement |> Index.array |> Index.increment)
+
+        ( shiftLeftAmount, shiftRightAmount ) =
+            ( start |> Index.bit, end |> Size.paddingBy 16 )
+
+        maskedLastInt =
+            arraySlice
+                |> lastOrZero
+                |> PackedInt.shiftRightBy shiftRightAmount
+                |> PackedInt.shiftLeftBy shiftRightAmount
+    in
+    if sliceSize <= 0 then
+        Array.empty
+
+    else if shiftLeftAmount == 0 then
+        -- We can skip shifting.
+        arraySlice
+            |> setLast maskedLastInt
+
+    else
+        -- We'll need to shift all the bits to the left some amount.
+        arraySlice
+            |> setLast maskedLastInt
+            -- Shift everything over
+            |> Array.foldl
+                (\int ( i, acc ) ->
+                    let
+                        shiftedInt =
+                            int |> PackedInt.shiftLeftBy shiftLeftAmount
+                    in
+                    case arraySlice |> Array.get (i + 1) of
+                        Nothing ->
+                            ( i + 1
+                            , acc |> Array.set i shiftedInt
+                            )
+
+                        Just nextInt ->
+                            let
+                                shiftedNextInt =
+                                    nextInt |> PackedInt.shiftRightBy (16 - shiftLeftAmount)
+                            in
+                            ( i + 1
+                            , acc |> Array.set i (shiftedInt |> PackedInt.combine shiftedNextInt)
+                            )
+                )
+                ( 0, sizedFor sliceSize )
+            |> Tuple.second
+
+
+{-| Drop the leftmost `n` bits, filling in the right side with a minimal amount
+of zeroes.
 -}
 dropLeft : Size -> Size -> PackedArray -> PackedArray
-dropLeft n size pack =
-    let
-        actualN =
-            n |> modBy 16
-    in
-    pack
-        |> dropLeftHelper
-            actualN
-            Index.origin
-            (sizedFor (size - n))
+dropLeft n sz array =
+    if n <= 0 then
+        array
+
+    else
+        array |> slice n sz sz
 
 
-dropLeftHelper : Size -> ArrayIndex -> PackedArray -> PackedArray -> PackedArray
-dropLeftHelper n i acc pack =
-    case ( pack |> Array.get i, pack |> Array.get (i + 1) ) of
-        ( Nothing, _ ) ->
-            acc
+{-| Drop the rightmost `n` bits, filling in the right side with a minimal amount
+of zeroes.
+-}
+dropRight : Size -> Size -> PackedArray -> PackedArray
+dropRight n sz array =
+    if n <= 0 then
+        array
 
-        ( Just int, Nothing ) ->
-            acc |> Array.set i (int |> PackedInt.shiftLeftBy n)
-
-        ( Just int1, Just int2 ) ->
-            let
-                ( shifted1, shifted2 ) =
-                    ( int1 |> PackedInt.shiftLeftBy n
-                    , int2 |> PackedInt.shiftRightBy (16 - n)
-                    )
-
-                repack =
-                    acc |> Array.set i (shifted1 |> PackedInt.combine shifted2)
-            in
-            dropLeftHelper n (i + 1) repack pack
+    else
+        array |> slice Index.origin (sz - n) sz

@@ -1,4 +1,4 @@
-module Bitstring.Index exposing (Index, absolute, array, bit, fromAbsolute, origin)
+module Index exposing (Index, absolute, array, bit, decrement, fromAbsolute, increment, origin)
 
 {-| THIS IS AN INTERNAL MODULE.
 
@@ -65,3 +65,17 @@ bit =
 array : Index -> Index
 array i =
     i // 16
+
+
+
+--- CHANGING AN INDEX ---
+
+
+increment : Index -> Index
+increment i =
+    i + 1
+
+
+decrement : Index -> Index
+decrement i =
+    i - 1

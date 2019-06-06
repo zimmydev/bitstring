@@ -1,4 +1,4 @@
-module Bitstring.Size exposing (Division, Size, by, isAlignedBy, paddingBy)
+module Size exposing (Division, Size, by, isAlignedBy, paddingBy)
 
 {-| A few utilities for dealing with bitstring sizes.
 -}
