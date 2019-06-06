@@ -374,9 +374,9 @@ toString : Bitstring -> String
 toString (Bitstring sizeInBits array) =
     array
         |> PackedArray.fold
-            Index.origin
-            (\i -> i < sizeInBits)
-            increment
+            (sizeInBits - 1)
+            (\i -> i >= 0)
+            decrement
             (\_ b acc ->
                 if b == 0 then
                     String.cons '0' acc
