@@ -579,7 +579,7 @@ slice start end (Bitstring sizeInBits array) =
             correctEnd - correctStart |> clampPositive
     in
     array
-        |> PackedArray.slice correctStart correctEnd sizeInBits
+        |> PackedArray.slice correctStart correctEnd
         |> Bitstring newSizeInBits
 
 

@@ -187,8 +187,8 @@ fold i while step f acc array =
 {-| Slice a string of bits in a packed array from a start index up to (but not
 including) an end index.
 -}
-slice : Index -> Index -> Size -> PackedArray -> PackedArray
-slice start end sz array =
+slice : Index -> Index -> PackedArray -> PackedArray
+slice start end array =
     let
         sliceSize =
             end - start
@@ -255,7 +255,7 @@ dropLeft n sz array =
         array
 
     else
-        array |> slice n sz sz
+        array |> slice n sz
 
 
 {-| Drop the rightmost `n` bits, filling in the right side with a minimal amount
@@ -267,4 +267,4 @@ dropRight n sz array =
         array
 
     else
-        array |> slice Index.origin (sz - n) sz
+        array |> slice Index.origin (sz - n)
