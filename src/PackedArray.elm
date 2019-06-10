@@ -267,4 +267,4 @@ dropRight n sz array =
         array
 
     else
-        array |> slice Index.origin (sz - n)
+        array |> slice Index.zero (sz - n)

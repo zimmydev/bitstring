@@ -541,7 +541,7 @@ indexedMap : (Int -> Bit -> Bit) -> Bitstring -> Bitstring
 indexedMap f (Bitstring sizeInBits array) =
     array
         |> PackedArray.fold
-            Index.origin
+            Index.zero
             (\i -> i < sizeInBits)
             increment
             (\i b acc ->
@@ -652,7 +652,7 @@ foldl : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
 foldl f acc (Bitstring sizeInBits array) =
     array
         |> PackedArray.fold
-            Index.origin
+            Index.zero
             (\i -> i < sizeInBits)
             increment
             (\i b acc_ -> f (intToBit b) acc_)
@@ -683,7 +683,7 @@ complement : Bitstring -> Bitstring
 complement (Bitstring sizeInBits array) =
     array
         |> PackedArray.fold
-            Index.origin
+            Index.zero
             (\i -> i < sizeInBits)
             increment
             (\i b acc -> acc |> PackedArray.setBit i (flip b))
