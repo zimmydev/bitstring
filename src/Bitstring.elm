@@ -8,6 +8,7 @@ module Bitstring exposing
     , slice, left, right, dropLeft, dropRight
     , foldl, foldr
     , SizingMethod(..), defaultSizing, complement, and, or, xor
+    , equals
     )
 
 {-| A `Bitstring` is a [data structure](https://en.wikipedia.org/wiki/Bit_array)
@@ -63,6 +64,11 @@ library is probably more suited to your needs.
 # Bitwise operations
 
 @docs SizingMethod, defaultSizing, complement, and, or, xor
+
+
+# Comparing
+
+@docs equals
 
 -}
 
@@ -732,6 +738,23 @@ or _ _ =
 xor : SizingMethod -> Bitstring -> Bitstring -> Bitstring
 xor _ _ =
     Debug.todo "bitwise xor between 2 bitstrings"
+
+
+
+--- COMPARING BITSTRINGS ---
+{- TODO It may be possible to do an extremely simple `compare` function, if
+   the ordering of the packed-ints corresponds to exactly what you would expect
+   for bit-ordering (I have an feeling it is). I'll need to do a little testing.
+-}
+
+
+{-| Determine if two bitstrings are equal.
+-}
+equals : Bitstring -> Bitstring -> Bool
+equals (Bitstring size2 array2) (Bitstring size1 array1) =
+    -- This short-circuit is probably already implemented in array-equality, but
+    -- oh well; better safe than sorry (;
+    size1 == size2 && array2 == array1
 
 
 
