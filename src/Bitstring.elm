@@ -14,7 +14,7 @@ module Bitstring exposing
 for dealing with data at the bit level; it is also commonly referred to as a
 _bit array_. It can be very useful when you need to manipulate binary data, but
 your data is not byte-shaped (e.g., compressed or encoded data tends to be
-shaped this way).
+this way).
 
 If you need to deal with data on the level of bytes, the [`elm/bytes`](https://bit.ly/2wByQX8)
 library is probably more suited to your needs.
