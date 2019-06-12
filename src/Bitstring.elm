@@ -317,8 +317,7 @@ fromList list =
 -}
 toList : Bitstring -> List Bit
 toList bitstring =
-    List.range Index.zero (size bitstring - 1)
-        |> List.map (\i -> bitstring |> get i |> Maybe.withDefault Zero)
+    bitstring |> foldr (::) []
 
 
 {-| Create `Just` a bitstring from a string like "1001011", or `Nothing` if the
@@ -371,18 +370,16 @@ valid binary literal for many programming applications.
 
 -}
 toString : Bitstring -> String
-toString (Bitstring sizeInBits array) =
-    array
-        |> PackedArray.fold
-            (sizeInBits - 1)
-            (\i -> i >= 0)
-            Index.dec
-            (\_ b acc ->
-                if b == 0 then
-                    String.cons '0' acc
+toString bitstring =
+    bitstring
+        |> foldr
+            (\b acc ->
+                case b of
+                    Zero ->
+                        String.cons '0' acc
 
-                else
-                    String.cons '1' acc
+                    One ->
+                        String.cons '1' acc
             )
             ""
 
@@ -681,6 +678,7 @@ foldr f acc (Bitstring sizeInBits array) =
 -}
 complement : Bitstring -> Bitstring
 complement (Bitstring sizeInBits array) =
+    -- TODO We could accomplish this less verbosely with a PackedArray.map
     array
         |> PackedArray.fold
             Index.zero
