@@ -1,4 +1,4 @@
-module PackedArray exposing (PackedArray, decoder, dropLeft, dropRight, firstOrZero, fold, getBit, lastOrZero, setBit, setFirst, setLast, sizedFor, slice)
+module PackedArray exposing (PackedArray, decoder, dropLeft, dropRight, firstOrZero, fold, getBit, index, lastOrZero, setBit, setFirst, setLast, sizedFor, slice)
 
 {-| THIS IS AN INTERNAL MODULE.
 
@@ -100,7 +100,7 @@ the given index, or `Nothing` if the index is out of range.
 -}
 getPackedInt : Index -> PackedArray -> Maybe PackedInt
 getPackedInt i array =
-    array |> Array.get (Index.array i)
+    array |> Array.get (index i)
 
 
 {-| Set the bit in a packed array at the given index.
@@ -120,7 +120,7 @@ to another `PackedInt`. If the index is out of range, the array is unaltered.
 -}
 setPackedInt : Index -> PackedInt -> PackedArray -> PackedArray
 setPackedInt i int array =
-    array |> Array.set (Index.array i) int
+    array |> Array.set (index i) int
 
 
 
@@ -178,7 +178,7 @@ fold i while step f acc array =
                 acc
 
             Just bit ->
-                array |> fold (step i) while step f (f i bit acc)
+                fold (step i) while step f (f i bit acc) array
 
     else
         acc
@@ -193,17 +193,17 @@ slice start end array =
         sliceSize =
             end - start
 
-        arraySlice =
-            array
-                |> Array.slice
-                    (start |> Index.array)
-                    (end |> Index.decrement |> Index.array |> Index.increment)
+        sliced =
+            Array.slice
+                (start |> index)
+                (end |> Index.dec |> index |> Index.inc)
+                array
 
         ( shiftLeftAmount, shiftRightAmount ) =
-            ( start |> Index.bit, end |> Size.paddingBy 16 )
+            ( start |> PackedInt.index, end |> Size.paddingBy 16 )
 
         maskedLastInt =
-            arraySlice
+            sliced
                 |> lastOrZero
                 |> PackedInt.shiftRightBy shiftRightAmount
                 |> PackedInt.shiftLeftBy shiftRightAmount
@@ -213,12 +213,11 @@ slice start end array =
 
     else if shiftLeftAmount == 0 then
         -- We can skip shifting.
-        arraySlice
-            |> setLast maskedLastInt
+        sliced |> setLast maskedLastInt
 
     else
         -- We'll need to shift all the bits to the left some amount.
-        arraySlice
+        sliced
             |> setLast maskedLastInt
             -- Shift everything over
             |> Array.foldl
@@ -227,18 +226,16 @@ slice start end array =
                         shiftedInt =
                             int |> PackedInt.shiftLeftBy shiftLeftAmount
                     in
-                    case arraySlice |> Array.get (i + 1) of
+                    case sliced |> Array.get (i + 1) of
                         Nothing ->
-                            ( i + 1
-                            , acc |> Array.set i shiftedInt
-                            )
+                            ( Index.inc i, acc |> Array.set i shiftedInt )
 
                         Just nextInt ->
                             let
                                 shiftedNextInt =
                                     nextInt |> PackedInt.shiftRightBy (16 - shiftLeftAmount)
                             in
-                            ( i + 1
+                            ( Index.inc i
                             , acc |> Array.set i (shiftedInt |> PackedInt.combine shiftedNextInt)
                             )
                 )
@@ -268,3 +265,12 @@ dropRight n sz array =
 
     else
         array |> slice Index.zero (sz - n)
+
+
+
+--- CONVERTING AN INDEX ---
+
+
+index : Index -> Index
+index i =
+    i // 16

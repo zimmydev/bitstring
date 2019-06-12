@@ -1,24 +1,24 @@
-module Index exposing (Index, absolute, array, bit, decrement, increment, zero)
+module Index exposing (Index, dec, inc, zero)
 
 {-| THIS IS AN INTERNAL MODULE.
 
-An index is just an index into a bitstring that can be accessed as either its
-absolute representation, mod-16 representation, or packed-array-index
-representation.
+An index is just a bit's offset from the beginning of a `Bitstring`. Via this
+module, it can be converted into a more useful representation for the purposes
+of accessing bits in a `PackedArray`.
 
 -}
 
 --- TYPES ---
 
 
-{-| An bit's index within a bitstring.
+{-| An bit's index within a `Bitstring` or a `PackedArray`.
 -}
 type alias Index =
     Int
 
 
 
---- INDEX CONSTANTS ---
+--- CONSTANTS ---
 
 
 zero : Index
@@ -27,33 +27,18 @@ zero =
 
 
 
---- CONVERTING AN INDEX ---
+--- TRANSFORMING AN INDEX ---
 
 
-absolute : Index -> Index
-absolute =
-    identity
-
-
-bit : Index -> Index
-bit =
-    modBy 16
-
-
-array : Index -> Index
-array i =
-    i // 16
-
-
-
---- CHANGING AN INDEX ---
-
-
-increment : Index -> Index
-increment i =
+{-| Increment an index.
+-}
+inc : Index -> Index
+inc i =
     i + 1
 
 
-decrement : Index -> Index
-decrement i =
+{-| Decrement an index.
+-}
+dec : Index -> Index
+dec i =
     i - 1

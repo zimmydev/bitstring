@@ -376,7 +376,7 @@ toString (Bitstring sizeInBits array) =
         |> PackedArray.fold
             (sizeInBits - 1)
             (\i -> i >= 0)
-            decrement
+            Index.dec
             (\_ b acc ->
                 if b == 0 then
                     String.cons '0' acc
@@ -543,7 +543,7 @@ indexedMap f (Bitstring sizeInBits array) =
         |> PackedArray.fold
             Index.zero
             (\i -> i < sizeInBits)
-            increment
+            Index.inc
             (\i b acc ->
                 acc |> PackedArray.setBit i (intToBit b |> f i |> bitToInt)
             )
@@ -654,7 +654,7 @@ foldl f acc (Bitstring sizeInBits array) =
         |> PackedArray.fold
             Index.zero
             (\i -> i < sizeInBits)
-            increment
+            Index.inc
             (\i b acc_ -> f (intToBit b) acc_)
             acc
 
@@ -668,7 +668,7 @@ foldr f acc (Bitstring sizeInBits array) =
         |> PackedArray.fold
             sizeInBits
             (\i -> i >= 0)
-            decrement
+            Index.dec
             (\i b acc_ -> f (intToBit b) acc_)
             acc
 
@@ -685,7 +685,7 @@ complement (Bitstring sizeInBits array) =
         |> PackedArray.fold
             Index.zero
             (\i -> i < sizeInBits)
-            increment
+            Index.inc
             (\i b acc -> acc |> PackedArray.setBit i (flip b))
             (PackedArray.sizedFor sizeInBits)
         |> Bitstring sizeInBits
@@ -765,16 +765,6 @@ flip bit =
 
         _ ->
             0
-
-
-increment : number -> number
-increment x =
-    x + 1
-
-
-decrement : number -> number
-decrement x =
-    x - 1
 
 
 clampPositive : number -> number

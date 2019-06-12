@@ -1,4 +1,4 @@
-module PackedInt exposing (PackedInt, combine, discard, getBit, msb, setBit, shiftLeftBy, shiftRightBy)
+module PackedInt exposing (PackedInt, combine, discard, getBit, index, msb, setBit, shiftLeftBy, shiftRightBy)
 
 {-| THIS IS AN INTERNAL MODULE.
 
@@ -56,7 +56,7 @@ getBit : Index -> PackedInt -> Bit
 getBit i packedInt =
     let
         bitmask =
-            msb 1 |> Bitwise.shiftRightZfBy (Index.bit i)
+            msb 1 |> Bitwise.shiftRightZfBy (index i)
     in
     case Bitwise.and packedInt bitmask of
         0x00 ->
@@ -73,7 +73,7 @@ setBit : Index -> Bit -> PackedInt -> PackedInt
 setBit i bit int =
     let
         bitmask =
-            msb bit |> Bitwise.shiftRightZfBy (Index.bit i)
+            msb bit |> Bitwise.shiftRightZfBy (index i)
     in
     Bitwise.or int bitmask
         |> discard
@@ -126,3 +126,12 @@ shiftRightBy =
 combine : PackedInt -> PackedInt -> PackedInt
 combine =
     Bitwise.or
+
+
+
+--- CONVERTING AN INDEX ---
+
+
+index : Index -> Index
+index =
+    modBy 16
