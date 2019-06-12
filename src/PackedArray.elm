@@ -1,4 +1,4 @@
-module PackedArray exposing (PackedArray, decoder, dropLeft, dropRight, firstOrZero, fold, getBit, index, lastOrZero, setBit, setFirst, setLast, sizedFor, slice)
+module PackedArray exposing (PackedArray, decoder, dropLeft, dropRight, firstOrZero, fold, getBit, index, lastOrZero, map, setBit, setFirst, setLast, sizedFor, slice)
 
 {-| THIS IS AN INTERNAL MODULE.
 
@@ -157,6 +157,17 @@ setLast int array =
 
 
 --- TRANSFORMING A PACKED-ARRAY BY BITS ---
+
+
+map : Index -> (Bit -> Bit) -> PackedArray -> PackedArray
+map endIndex f array =
+    array
+        |> fold
+            Index.zero
+            (\i -> i < endIndex)
+            Index.inc
+            (\i b acc -> acc |> setBit i (f b))
+            (sizedFor endIndex)
 
 
 {-| Fold over a bitstring using an index, a predicate, and a step function. This

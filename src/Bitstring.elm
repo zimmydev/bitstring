@@ -67,8 +67,9 @@ library is probably more suited to your needs.
 -}
 
 import Array exposing (Array)
-import Bytes exposing (Bytes)
+import Bytes exposing (Bytes, Endianness(..))
 import Bytes.Decode as BDecode exposing (Decoder, Step(..))
+import Bytes.Encode as BEncode
 import Index as Index exposing (Index)
 import Maybe
 import PackedArray exposing (PackedArray)
@@ -284,8 +285,31 @@ bitstring is empty or its size is a multiple of 8 bits.
 
 -}
 toBytes : Bitstring -> Bytes
-toBytes _ =
-    Debug.todo "convert from bits to bytes, padding with 0 where necessary"
+toBytes (Bitstring sizeInBits array) =
+    let
+        paddingAmount =
+            sizeInBits |> Size.paddingBy 16
+
+        shiftedLast =
+            array
+                |> PackedArray.lastOrZero
+                |> PackedInt.shiftRightBy paddingAmount
+
+        isLastIndex i =
+            i == (Array.length array - 1)
+    in
+    array
+        |> Array.indexedMap
+            (\i int ->
+                if isLastIndex i && paddingAmount >= 8 then
+                    BEncode.unsignedInt8 shiftedLast
+
+                else
+                    BEncode.unsignedInt16 BE int
+            )
+        |> Array.toList
+        |> BEncode.sequence
+        |> BEncode.encode
 
 
 {-| Create a bitstring from a list of bits.
@@ -680,12 +704,7 @@ complement : Bitstring -> Bitstring
 complement (Bitstring sizeInBits array) =
     -- TODO We could accomplish this less verbosely with a PackedArray.map
     array
-        |> PackedArray.fold
-            Index.zero
-            (\i -> i < sizeInBits)
-            Index.inc
-            (\i b acc -> acc |> PackedArray.setBit i (flip b))
-            (PackedArray.sizedFor sizeInBits)
+        |> PackedArray.map sizeInBits flip
         |> Bitstring sizeInBits
 
 
