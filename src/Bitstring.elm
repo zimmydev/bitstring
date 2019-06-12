@@ -303,8 +303,8 @@ fromList list =
     list
         |> List.map bitToInt
         |> List.foldl
-            (\bit ( i, acc ) -> ( i + 1, acc |> PackedArray.setBit i bit ))
-            ( 0, PackedArray.sizedFor sizeInBits )
+            (\bit ( i, acc ) -> ( Index.inc i, acc |> PackedArray.setBit i bit ))
+            ( Index.zero, PackedArray.sizedFor sizeInBits )
         |> Tuple.second
         |> Bitstring sizeInBits
 
@@ -317,7 +317,7 @@ fromList list =
 -}
 toList : Bitstring -> List Bit
 toList bitstring =
-    List.range 0 (size bitstring - 1)
+    List.range Index.zero (size bitstring - 1)
         |> List.map (\i -> bitstring |> get i |> Maybe.withDefault Zero)
 
 
@@ -343,15 +343,15 @@ fromString string =
             (\c ( i, acc ) ->
                 case c of
                     '1' ->
-                        ( i + 1, acc |> Maybe.map (PackedArray.setBit i 1) )
+                        ( Index.inc i, acc |> Maybe.map (PackedArray.setBit i 1) )
 
                     '0' ->
-                        ( i + 1, acc |> Maybe.map (PackedArray.setBit i 0) )
+                        ( Index.inc i, acc |> Maybe.map (PackedArray.setBit i 0) )
 
                     _ ->
-                        ( i + 1, Nothing )
+                        ( Index.inc i, Nothing )
             )
-            ( 0, Just <| PackedArray.sizedFor sizeInBits )
+            ( Index.zero, Just <| PackedArray.sizedFor sizeInBits )
         |> Tuple.second
         |> Maybe.map (Bitstring sizeInBits)
 
@@ -666,7 +666,7 @@ foldr : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
 foldr f acc (Bitstring sizeInBits array) =
     array
         |> PackedArray.fold
-            sizeInBits
+            (sizeInBits - 1)
             (\i -> i >= 0)
             Index.dec
             (\i b acc_ -> f (intToBit b) acc_)
@@ -734,7 +734,7 @@ translateIndex sizeInBits i =
             else
                 i
     in
-    adjustedIndex |> clamp 0 sizeInBits
+    adjustedIndex |> clamp Index.zero sizeInBits
 
 
 bitToInt : Bit -> Int
