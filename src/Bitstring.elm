@@ -1,13 +1,14 @@
 module Bitstring exposing
     ( Bitstring, Bit(..)
     , empty, repeat, initialize
-    , size, sizeInBytes, isEmpty, padding
+    , size, sizeInBytes, isEmpty, padding, isAligned
     , fromBytes, toBytes, fromList, toList, fromString, toString
     , get, set
     , push, pop, append, concat, indexedMap
     , slice, left, right, dropLeft, dropRight
     , foldl, foldr
-    , SizingMethod(..), defaultSizing, complement, and, or, xor
+    , complement, and, or, xor
+    , SizingMethod(..), defaultSizing, andBy, orBy, xorBy
     , equals
     )
 
@@ -33,20 +34,32 @@ library is probably more suited to your needs.
 
 # Dimensions
 
-@docs size, sizeInBytes, isEmpty, padding
+@docs size, sizeInBytes, isEmpty, padding, isAligned
 
 
 # Converting
+
+Bitstrings can by converted to and from `Bytes`, `List Bit`, and `String`.
 
 @docs fromBytes, toBytes, fromList, toList, fromString, toString
 
 
 # Getting and setting bits
 
+You can `get` and `set` individual bits in a bitstring.
+
 @docs get, set
 
 
 # Transforming
+
+Like with
+[`Basics.Array`](https://package.elm-lang.org/packages/elm/core/latest/Array),
+`push`, `append`, and `concat` are relatively expensive operations compared to
+`get` and `set`. This means that these APIs really should only be used if you're
+constructing bitstrings of indeterminate length at runtime. If the bitstring's
+length can be known ahead of time, it's probably better to use `initialize` or a
+similar interface that can allocate space for your bitstring ahead of time.
 
 @docs push, pop, append, concat, indexedMap
 
@@ -58,15 +71,31 @@ library is probably more suited to your needs.
 
 # Reducing
 
+You can reduce a bitstring from the left or right side.
+
 @docs foldl, foldr
 
 
 # Bitwise operations
 
-@docs SizingMethod, defaultSizing, complement, and, or, xor
+You can perform bitwise operations between bitstrings. By default, these
+operations will truncate the right side of the larger bitstring to make it match
+the length of the shorter bitstring. If you need different behavior, see the
+next section: **Bitwise operations with different behavior**.
+
+@docs complement, and, or, xor
 
 
-# Comparing
+# Bitwise operations with different behavior
+
+These operations take an additional `SizingMethod` argument which determines
+exactly how bitstrings of disparate sizes will be resized before the operation
+is performed.
+
+@docs SizingMethod, defaultSizing, andBy, orBy, xorBy
+
+
+# Comparisons
 
 @docs equals
 
@@ -101,43 +130,45 @@ type Bit
     | Zero
 
 
-{-| A `SizingMethod` is needed to determine how bitstrings should be resized
-before performing a bitwise operation, in the event that the sizes are
-mismatched.
+{-| There are four different sizing methods for four different use-cases. Here
+are examples of each method:
 
-Here are some examples:
-
-  - `PadRight Zero` will pad the shorter bitstring with `0`'s on the right to
-    match the length of the longer one.
-  - `PadLeft One` will pad the shorter bitstring with `1`'s on the left to
-    match the length of the longer one.
   - `TruncateRight` will truncate the right end of the longer bitstring to match
     the length of the shorter one.
   - `TruncateLeft` will truncate the left end of the longer bitstring to match
     the length of the shorter one.
+  - `PadRight Zero` will pad the shorter bitstring with `0`s on the right to
+    match the length of the longer one.
+  - `PadLeft One` will pad the shorter bitstring with `1`s on the left to match
+    the length of the longer one.
 
 -}
 type SizingMethod
-    = PadRight Bit
-    | PadLeft Bit
-    | TruncateLeft
+    = TruncateLeft
     | TruncateRight
+    | PadRight Bit
+    | PadLeft Bit
 
 
-{-| The default sizing method for bitwise operations, which is `PadRight Zero`.
+{-| The default sizing method for bitwise operations, which is `TruncateRight`.
 
-This is basically what you would expect if you're building your bitstring up
-from left to right, in which case you would expect the MSBs (most-significant
-bits) to be aligned. I imagine that this is sensible behavior in _most_ cases.
+Why truncate? Generally, zipping operations between lists and list-like data
+structures truncate the longer list to match the length of the shorter list.
+This library chooses to mimic this kind of behavior by default.
 
-This may not be the behavior you expect if your bitstring is a representation
-of a binary number, in which case you might expect the LSBs (least-significant
-bits) to be aligned.
+Why right? This is basically what you would expect if you're building your
+bitstring up from left to right, in which case you would expect the MSBs
+(most-significant bits) to be aligned.
+
+Note that this may not be the behavior you expect if your bitstring is a
+representation of a binary integer and your bitwise operation is arithmetic in
+its intention, in which case you might expect the LSBs (least-significant bits)
+to be aligned.
 
 -}
 defaultSizing : SizingMethod
 defaultSizing =
-    PadRight Zero
+    TruncateRight
 
 
 
@@ -235,9 +266,9 @@ isEmpty bitstring =
 
 
 {-| Return the size that the padding will be if the bitstring is converted to
-bytes using `toBytes`. Another way to think about padding is as the amount of
-bits that you can push onto the end of a bitstring until it aligns with the next
-byte boundary.
+bytes using `toBytes`. Another way to think about padding is as the number of
+bits that you can push onto the end of a bitstring before it aligns with the
+next byte boundary.
 
     padding empty
     --> 0
@@ -254,6 +285,17 @@ Notice that the empty bitstring is considered aligned (i.e., the padding is 0).
 padding : Bitstring -> Int
 padding bitstring =
     size bitstring |> Size.paddingBy 8
+
+
+{-| Determine if a bitstring is byte-aligned.
+
+This is really just shorthand for `padding bitstring == 0`, but is more clear in
+its intention.
+
+-}
+isAligned : Bitstring -> Bool
+isAligned bitstring =
+    size bitstring |> Size.isAlignedBy 8
 
 
 
@@ -455,8 +497,7 @@ set i bit (Bitstring sizeInBits array) =
 --- TRANSFORMING A BITSTRING ---
 
 
-{-| Push a bit onto the end of a bitstring. This is probably the interface
-you'll want to use if you're constructing bitstrings at runtime.
+{-| Push a bit onto the end of a bitstring.
 
     empty |> push One |> push Zero |> push Zero
     --> fromList [ One, Zero, Zero ]
@@ -715,39 +756,59 @@ complement (Bitstring sizeInBits array) =
         |> Bitstring sizeInBits
 
 
-{-| Perform a bitwise _and_ operation between two bitstrings.
-
-Note that a `SizingMethod` is required to perform this and all other bitwise
-binary operations. See the relevant documentation for `SizingMethod` to get a
-better idea of what this means.
-
+{-| Perform a bitwise _and_ between two bitstrings using the `defaultSizing`.
 -}
-and : SizingMethod -> Bitstring -> Bitstring -> Bitstring
-and method bitstring2 bitstring1 =
-    bitstring1 |> bitwise method Bitwise.and bitstring2
+and : Bitstring -> Bitstring -> Bitstring
+and =
+    andBy defaultSizing
 
 
-{-| Perform a bitwise _or_ operation between two bitstrings.
+{-| Perform a bitwise _or_ between two bitstrings using the `defaultSizing`.
 -}
-or : SizingMethod -> Bitstring -> Bitstring -> Bitstring
-or method bitstring2 bitstring1 =
-    bitstring1 |> bitwise method Bitwise.or bitstring2
+or : Bitstring -> Bitstring -> Bitstring
+or =
+    orBy defaultSizing
 
 
-{-| Perform a bitwise _exclusive-or_ operation between two bitstrings.
+{-| Perform a bitwise _exclusive-or_ between two bitstrings using the
+`defaultSizing`.
 -}
-xor : SizingMethod -> Bitstring -> Bitstring -> Bitstring
-xor method bitstring2 bitstring1 =
-    bitstring1 |> bitwise method Bitwise.xor bitstring2
+xor : Bitstring -> Bitstring -> Bitstring
+xor =
+    xorBy defaultSizing
 
 
-bitwise :
+{-| Perform a bitwise _and_ between two bitstrings by using the given
+`SizingMethod`.
+-}
+andBy : SizingMethod -> Bitstring -> Bitstring -> Bitstring
+andBy method bitstring2 bitstring1 =
+    bitstring1 |> bitwiseBy method Bitwise.and bitstring2
+
+
+{-| Perform a bitwise _or_ between two bitstrings by using the given
+`SizingMethod`.
+-}
+orBy : SizingMethod -> Bitstring -> Bitstring -> Bitstring
+orBy method bitstring2 bitstring1 =
+    bitstring1 |> bitwiseBy method Bitwise.or bitstring2
+
+
+{-| Perform a bitwise _exclusive-or_ between two bitstrings by using the given
+`SizingMethod`.
+-}
+xorBy : SizingMethod -> Bitstring -> Bitstring -> Bitstring
+xorBy method bitstring2 bitstring1 =
+    bitstring1 |> bitwiseBy method Bitwise.xor bitstring2
+
+
+bitwiseBy :
     SizingMethod
     -> (PackedInt -> PackedInt -> PackedInt)
     -> Bitstring
     -> Bitstring
     -> Bitstring
-bitwise method logic (Bitstring size2 array2) (Bitstring size1 array1) =
+bitwiseBy method logic (Bitstring size2 array2) (Bitstring size1 array1) =
     Debug.todo "bitwise logic"
 
 
