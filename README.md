@@ -17,9 +17,12 @@ elm install zimmydev/bitstring
 
 # Verifying examples
 
-Travis-CI doesn't include support for `elm-verify-examples`, so to verify the
-examples, you'll need to run it manually; from your top-level project directory,
-run:
+Note: This requires installing the
+[`elm-verify-examples`](https://github.com/stoeffel/elm-verify-examples) package
+from npm.
+
+Travis-CI doesn't include support for `elm-verify-examples`, so you'll need to
+run it manually. From your top-level project directory, run:
 
 ```
 elm-verify-examples && elm-test
