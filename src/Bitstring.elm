@@ -81,7 +81,7 @@ You can reduce a bitstring from the left or right side.
 You can perform bitwise operations between bitstrings. By default, these
 operations will truncate the right side of the larger bitstring to make it match
 the length of the shorter bitstring. If you need different behavior, see the
-next section: **Bitwise operations with different behavior**.
+next section: _Bitwise operations with different behavior_.
 
 @docs complement, and, or, xor
 
@@ -144,8 +144,8 @@ are examples of each method:
 
 -}
 type SizingMethod
-    = TruncateLeft
-    | TruncateRight
+    = TruncateRight
+    | TruncateLeft
     | PadRight Bit
     | PadLeft Bit
 
@@ -240,13 +240,14 @@ size (Bitstring sizeInBits _) =
 that would be needed to represent the it when converting from a `Bitstring` to
 `Bytes` using `toBytes` (padding the remaining space with zeros when necessary).
 
-    sizeInBytes empty --> 0
+    sizeInBytes empty
+    --> 0
 
-    sizeInBytes (repeat 2 Zero) --> 1
+    sizeInBytes (repeat 8 Zero)
+    --> 1
 
-    sizeInBytes (repeat 8 Zero) --> 1
-
-    sizeInBytes (repeat 9 Zero) --> 2
+    sizeInBytes (repeat 11 Zero)
+    --> 2
 
 -}
 sizeInBytes : Bitstring -> Int
@@ -272,12 +273,12 @@ next byte boundary.
 
     padding empty
     --> 0
-    padding (repeat 2 One)
-    --> 6
+
     padding (repeat 8 One)
     --> 0
-    padding (repeat 9 One)
-    --> 7
+
+    padding (repeat 11 One)
+    --> 5
 
 Notice that the empty bitstring is considered aligned (i.e., the padding is 0).
 
@@ -288,6 +289,15 @@ padding bitstring =
 
 
 {-| Determine if a bitstring is byte-aligned.
+
+    isAligned empty
+    --> True
+
+    isAligned (repeat 8 One)
+    --> True
+
+    isAligned (repeat 11 One)
+    --> False
 
 This is really just shorthand for `padding bitstring == 0`, but is more clear in
 its intention.
@@ -398,8 +408,10 @@ string contains anything but `'1'` or `'0'`.
 
     fromString "1001011"
     --> Just (fromList [One, Zero, Zero, One, Zero, One, One])
+
     fromString ""
     --> Just empty
+
     fromString "he110 w0r1d"
     --> Nothing
 
@@ -428,18 +440,17 @@ fromString string =
         |> Maybe.map (Bitstring sizeInBits)
 
 
-{-| Create a string representation of a bitstring.
+{-| Create a string representation of a bitstring. This **does not** elide any
+leading zeroes.
 
     toString (repeat 5 One)
     --> "11111"
-    toString (fromList [One, One, Zero])
-    --> "110"
+
+    toString (fromList [Zero, One, Zero])
+    --> "010"
+
     toString empty
     --> ""
-
-This is very useful mostly for debugging but could be used for anything that
-involves displaying the bits. You can use `toString >> (++) "0b"` to create a
-valid binary literal for many programming applications.
 
 -}
 toString : Bitstring -> String
@@ -605,6 +616,11 @@ concat =
 {-| Map over a bitstring, supplying an index argument to the mapping function.
 Using this function, you could, for example, set or unset bits at specific
 indices in a bitstring, without having to use `set` for each bit.
+
+    fromList [ Zero, One, One, Zero, Zero, One, Zero, Zero ]
+        |> indexedMap (\i b -> if i < 4 then b else One)
+    --> fromList [ Zero, One, One, Zero, One, One, One, One ]
+
 -}
 indexedMap : (Int -> Bit -> Bit) -> Bitstring -> Bitstring
 indexedMap f (Bitstring sizeInBits array) =
@@ -628,11 +644,13 @@ indexedMap f (Bitstring sizeInBits array) =
 Negative indices are calculated by subtracting backwards from the end of the
 bitstring.
 
-    fromList [ One, One, Zero, Zero, One ] |> slice 2 4
+    fromList [ One, One, Zero, Zero, One ]
+        |> slice 2 4
     --> fromList [ Zero, Zero ]
 
     -- The is how pop is defined
-    fromList [ One, One, Zero, Zero, One ] |> slice 0 -1
+    fromList [ One, One, Zero, Zero, One ]
+        |> slice 0 -1
     --> fromList [ One, One, Zero, Zero ]
 
 -}
@@ -654,7 +672,8 @@ slice start end (Bitstring sizeInBits array) =
 
 {-| Take the leftmost `n` bits of a bitstring.
 
-    fromList [ One, One, Zero, Zero, One ] |> left 3
+    fromList [ One, One, Zero, Zero, One ]
+        |> left 3
     --> fromList [ One, One, Zero ]
 
 -}
@@ -666,7 +685,8 @@ left n bitstring =
 
 {-| Take the rightmost `n` bits of a bitstring.
 
-    fromList [ One, One, Zero, Zero, One ] |> right 3
+    fromList [ One, One, Zero, Zero, One ]
+        |> right 3
     --> fromList [ Zero, Zero, One ]
 
 -}
@@ -678,7 +698,8 @@ right n bitstring =
 
 {-| Drop `n` bits from the left side of a bitstring.
 
-    fromList [ One, One, Zero, Zero, One ] |> dropLeft 3
+    fromList [ One, One, Zero, Zero, One ]
+        |> dropLeft 3
     --> fromList [ Zero, One ]
 
 -}
@@ -695,7 +716,8 @@ dropLeft n (Bitstring sizeInBits array) =
 
 {-| Drop `n` bits from the right side of a bitstring.
 
-    fromList [ One, One, Zero, Zero, One ] |> dropRight 3
+    fromList [ One, One, Zero, Zero, One ]
+        |> dropRight 3
     --> fromList [ One, One ]
 
 -}
@@ -714,8 +736,13 @@ dropRight n (Bitstring sizeInBits array) =
 --- REDUCING A BITSTRING ---
 
 
-{-| Reduce a bitstring from the left. `foldl` is conventional nomenclature
-meaning _fold from the left_.
+{-| Fold a bitstring from the left.
+
+    -- This fold operation counts the number of `1`s in the bitstring.
+    fromList [ Zero, One, One, Zero, Zero, One, Zero, Zero ]
+        |> foldl (\b acc -> if b == One then acc + 1 else acc) 0
+    --> 3
+
 -}
 foldl : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
 foldl f acc (Bitstring sizeInBits array) =
@@ -728,8 +755,7 @@ foldl f acc (Bitstring sizeInBits array) =
             acc
 
 
-{-| Reduce a bitstring from the right. `foldr` is conventional nomenclature
-meaning _fold from the right_.
+{-| Fold a bitstring from the right.
 -}
 foldr : (Bit -> acc -> acc) -> acc -> Bitstring -> acc
 foldr f acc (Bitstring sizeInBits array) =
