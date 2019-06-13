@@ -73,6 +73,7 @@ library is probably more suited to your needs.
 -}
 
 import Array exposing (Array)
+import Bitwise
 import Bytes exposing (Bytes, Endianness(..))
 import Bytes.Decode as BDecode exposing (Decoder, Step(..))
 import Bytes.Encode as BEncode
@@ -722,22 +723,32 @@ better idea of what this means.
 
 -}
 and : SizingMethod -> Bitstring -> Bitstring -> Bitstring
-and _ _ =
-    Debug.todo "bitwise and between 2 bitstrings"
+and method bitstring2 bitstring1 =
+    bitstring1 |> bitwise method Bitwise.and bitstring2
 
 
 {-| Perform a bitwise _or_ operation between two bitstrings.
 -}
 or : SizingMethod -> Bitstring -> Bitstring -> Bitstring
-or _ _ =
-    Debug.todo "bitwise or between 2 bitstrings"
+or method bitstring2 bitstring1 =
+    bitstring1 |> bitwise method Bitwise.or bitstring2
 
 
 {-| Perform a bitwise _exclusive-or_ operation between two bitstrings.
 -}
 xor : SizingMethod -> Bitstring -> Bitstring -> Bitstring
-xor _ _ =
-    Debug.todo "bitwise xor between 2 bitstrings"
+xor method bitstring2 bitstring1 =
+    bitstring1 |> bitwise method Bitwise.xor bitstring2
+
+
+bitwise :
+    SizingMethod
+    -> (PackedInt -> PackedInt -> PackedInt)
+    -> Bitstring
+    -> Bitstring
+    -> Bitstring
+bitwise method logic (Bitstring size2 array2) (Bitstring size1 array1) =
+    Debug.todo "bitwise logic"
 
 
 
