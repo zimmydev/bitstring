@@ -27,6 +27,16 @@ suite =
                     |> Bitstring.fromBytes
                     |> Bitstring.toBytes
                     |> Expect.equal by
+        , fuzz string "fromString and toString are the inverse of each other" <|
+            \s ->
+                case s |> Bitstring.fromString of
+                    Nothing ->
+                        Expect.pass
+
+                    Just b ->
+                        b
+                            |> Bitstring.toString
+                            |> Expect.equal s
         , test "isEmpty works as expected" <|
             \_ ->
                 Bitstring.empty
@@ -47,7 +57,7 @@ suite =
                     |> Bitstring.fromList
                     |> Bitstring.size
                     |> Expect.equal (List.length l)
-        , fuzz bytes "fromBytes forms a correctly-sized bitstring" <|
+        , fuzz bytes "bitstrings have the correct byte-size" <|
             \by ->
                 by
                     |> Bitstring.fromBytes
@@ -59,6 +69,14 @@ suite =
                     |> List.foldl (\bit acc -> acc |> Bitstring.push bit) Bitstring.empty
                     |> Bitstring.toList
                     |> Expect.equal l
+        , fuzz (Fuzz.list bitlist) "append/concat works correctly" <|
+            \ls ->
+                ls
+                    |> List.map Bitstring.fromList
+                    -- We are implicitly testing `append` here (nice!)
+                    |> Bitstring.concat
+                    |> Bitstring.toList
+                    |> Expect.equal (List.concat ls)
         ]
 
 
@@ -68,7 +86,8 @@ suite =
 
 bytes : Fuzzer Bytes
 bytes =
-    Fuzz.string |> Fuzz.map (\s -> BEncode.string s |> BEncode.encode)
+    Fuzz.string
+        |> Fuzz.map (\s -> BEncode.string s |> BEncode.encode)
 
 
 bitlist : Fuzzer (List Bit)
@@ -87,4 +106,12 @@ bitlist =
 
 bitstring : Fuzzer Bitstring
 bitstring =
-    bytes |> Fuzz.map Bitstring.fromBytes
+    bytes
+        |> Fuzz.map Bitstring.fromBytes
+
+
+string : Fuzzer String
+string =
+    Fuzz.oneOf [ Fuzz.constant '1', Fuzz.constant '0' ]
+        |> Fuzz.list
+        |> Fuzz.map String.fromList

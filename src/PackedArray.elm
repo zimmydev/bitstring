@@ -112,7 +112,11 @@ setBit i bit array =
             array
 
         Just int ->
-            array |> setPackedInt i (int |> PackedInt.setBit i bit)
+            let
+                newPackedInt =
+                    int |> PackedInt.setBit i bit
+            in
+            array |> setPackedInt i newPackedInt
 
 
 {-| Set the `PackedInt` in the array which holds the bit at the given index

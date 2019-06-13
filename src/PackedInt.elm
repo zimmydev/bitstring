@@ -72,10 +72,23 @@ the index is out of range (i.e., over `15`), the integer is unaltered.
 setBit : Index -> Bit -> PackedInt -> PackedInt
 setBit i bit int =
     let
-        bitmask =
-            msb bit |> Bitwise.shiftRightZfBy (index i)
+        ( operation, bitmask ) =
+            case bit of
+                0 ->
+                    ( Bitwise.and
+                    , msb 1
+                        |> Bitwise.shiftRightZfBy (index i)
+                        |> Bitwise.complement
+                    )
+
+                _ ->
+                    ( Bitwise.or
+                    , msb 1
+                        |> Bitwise.shiftRightZfBy (index i)
+                    )
     in
-    Bitwise.or int bitmask
+    int
+        |> operation bitmask
         |> discard
 
 

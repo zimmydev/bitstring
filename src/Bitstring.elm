@@ -475,8 +475,13 @@ toString bitstring =
 {-| Return `Just` the bit at the given index in the bitstring, or `Nothing` if
 the index is out of range.
 
-    fromList [ One, Zero, One, One ] |> get 1
-    --> Zero
+    fromList [ One, Zero, One, One ]
+        |> get 1
+    --> Just Zero
+
+    fromList [ One, Zero, One, One ]
+        |> get 15
+    --> Nothing
 
 -}
 get : Int -> Bitstring -> Maybe Bit
@@ -493,7 +498,8 @@ get i (Bitstring sizeInBits array) =
 {-| Set or unset the individual bit at the given index in the bitstring. If the
 index is out of range, the bitstring is unaltered.
 
-    repeat 5 One |> set 2 Zero
+    repeat 5 One
+        |> set 2 Zero
     --> fromList [ One, One, Zero, One, One ]
 
 -}
